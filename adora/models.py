@@ -95,14 +95,15 @@ class Product(Date):
     guarantee = models.CharField(max_length=500, null=True, blank=True, verbose_name='گارانتی' )
     guarantee_duration = models.IntegerField(default=0, verbose_name="مدت زمان گارانتی", help_text=_("مدت زمان به ماه وارد شود"))
     new = models.BooleanField(default=False, verbose_name="محصول جدید")
+    buyer = models.PositiveIntegerField(default=0, verbose_name=_("تعداد خریدار"))
+    customer_point = models.PositiveIntegerField(default=0, verbose_name=_("درصد رضایت خریداران"))
+    description = models.TextField(null=True, blank=True, verbose_name=_("توضیحات"))
+    
     material = models.ForeignKey(Matrial, related_name="products", on_delete=models.SET_NULL,  null=True, blank=True, verbose_name="جنس محصول")
-    compatible_cars = models.ManyToManyField(Car, blank=True, related_name='products', verbose_name=_("مناسب خودرو های"))
     category = models.ForeignKey(Category, related_name="products", on_delete=models.CASCADE, verbose_name="دسته بندی" )
     brand = models.ForeignKey(Brand, null=True, related_name="products", on_delete=models.SET_NULL, verbose_name=_("شرکت سازنده"))
     similar_products = models.ManyToManyField("self", blank=True, symmetrical=False, verbose_name="محصولات مشابه")
-    description = models.TextField(null=True, blank=True, verbose_name=_("توضیحات"))
-    buyer = models.PositiveIntegerField(default=0, verbose_name=_("تعداد خریدار"))
-    customer_point = models.PositiveIntegerField(default=0, verbose_name=_("درصد رضایت خریداران"))
+    compatible_cars = models.ManyToManyField(Car, blank=True, related_name='products', verbose_name=_("مناسب خودرو های"))
 
     class Meta:
         verbose_name = _("محصول")

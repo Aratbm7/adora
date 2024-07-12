@@ -5,7 +5,7 @@ from adora.views import CategoryViewset, ProductViewset, BrandViewset
 router = DefaultRouter()
 
 router.register('categories', CategoryViewset, basename="categories")
-router.register('produts', ProductViewset, basename="products")
+router.register('products', ProductViewset, basename="products")
 router.register('brands', BrandViewset, basename="brands")
 
 urlpatterns = [

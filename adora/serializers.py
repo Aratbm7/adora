@@ -16,9 +16,8 @@ class CategorySerializer(serializers.ModelSerializer):
         
 class SimilarProductsSerializer(serializers.ModelSerializer):
     category = serializers.SerializerMethodField(read_only=True)
-    material = serializers.SerializerMethodField(read_only=True)
-    compatible_cars = serializers.SerializerMethodField(read_only=True)
-    # image = serializers.SerializerMethodField(read_only=True)
+    # material = serializers.SerializerMethodField(read_only=True)
+    # compatible_cars = serializers.SerializerMethodField(read_only=True)
     discounted_price = serializers.SerializerMethodField(read_only=True)
     discounted_wallet = serializers.SerializerMethodField(read_only=True)
     brand= serializers.SerializerMethodField(read_only=True)
@@ -37,12 +36,12 @@ class SimilarProductsSerializer(serializers.ModelSerializer):
                   'discounted_wallet',
                   'count',
                   'new',
-                  'material',
-                  'category',
+                #   'material',
+                #   'category',
                   'compatible_cars',
                   'brand',
                   'images',
-                  'description',
+                #   'description',
                   'buyer',
                   'customer_point',
                   ]
@@ -69,7 +68,7 @@ class SimilarProductsSerializer(serializers.ModelSerializer):
     def get_discounted_wallet(self, obj):
         return (obj.price * obj.wallet_discount) / 100
 
-class ProductSerializer(serializers.ModelSerializer):
+class ProductRetrieveSerializer(serializers.ModelSerializer):
     category = serializers.SerializerMethodField(read_only=True)
     material = serializers.SerializerMethodField(read_only=True)
     compatible_cars = serializers.SerializerMethodField(read_only=True)
@@ -108,8 +107,7 @@ class ProductSerializer(serializers.ModelSerializer):
                   'description',
                   'buyer',
                   'customer_point',
-                #   'created_date',
-                #   'updated_date'
+             
                   ]
         
         
@@ -146,6 +144,70 @@ class ProductSerializer(serializers.ModelSerializer):
     #     except ValidationError as e:
     #         raise serializers.ValidationError("Custom error message for price validation")
 
+
+class ProductListSerializer(serializers.ModelSerializer):
+    category = serializers.SerializerMethodField(read_only=True)
+    material = serializers.SerializerMethodField(read_only=True)
+    compatible_cars = serializers.SerializerMethodField(read_only=True)
+    # image = serializers.SerializerMethodField(read_only=True)
+    discounted_price = serializers.SerializerMethodField(read_only=True)
+    discounted_wallet = serializers.SerializerMethodField(read_only=True)
+    brand= serializers.SerializerMethodField(read_only=True)
+    images = ProductImageSerializer(many=True, read_only=True)
+    wallet_discount_percent = serializers.CharField(source='wallet_discount')
+
+
+    
+    class Meta:
+        model = Product
+        fields = ['id',
+                  'fa_name', 
+                  'en_name', 
+                  'price',
+                  'price_discount_percent',
+                  'discounted_price',
+                  'wallet_discount_percent',
+                  'discounted_wallet',
+                  'count',
+                  'install_location',
+                  'count_in_box',
+                  'guarantee',
+                  'guarantee_duration',
+                  'new',
+                  'material',
+                  'category',
+                  'compatible_cars',
+                  'brand',
+                  'images',
+                  'description',
+                  'buyer',
+                  'customer_point',
+   
+                  ]
+        
+        
+        
+    def get_brand(self, obj):
+        return {'id': obj.brand.id, 'name': obj.brand.name, 'image_url': obj.brand.image, 'alt': obj.brand.alt}
+        
+    def get_category(self,obj):
+        return {'id':obj.category.id, 'name':obj.category.name, 'image_url': obj.category.image, 'alt':obj.category.alt}
+    
+    def get_material(self,obj):
+        return {"id":obj.material.id, "name": obj.material.material_name}
+    
+    def get_compatible_cars(self, obj):
+        return [{
+                "id": car.id,
+                "fa_name":car.fa_name,
+                 "image_url": car.image,
+                 "image_alt": car.alt} for car in obj.compatible_cars.all()]
+    
+    def get_discounted_price(self,obj):
+        return obj.price - ((obj.price * obj.price_discount_percent) / 100)
+    
+    def get_discounted_wallet(self, obj):
+        return (obj.price * obj.wallet_discount) / 100
 
 class BrandSerializer(serializers.ModelSerializer):
     class Meta:

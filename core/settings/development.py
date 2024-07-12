@@ -15,3 +15,8 @@ DATABASES = {
     }
 }
 
+DEBUG_TOOLBAR_CONFIG = {
+    "SHOW_TOOLBAR_CALLBACK": lambda request: True,
+}
+
+LANGUAGE_CODE = 'en'
