@@ -1,0 +1,11 @@
+django==4.2
+djangorestframework
+djangorestframework-simplejwt
+django-phonenumber-field
+django-phonenumbers  
+django-filter
+django-debug-toolbar
+django-redis
+psycopg2-binary==2.9.6
+gunicorn==21.2.0
+python-dotenv

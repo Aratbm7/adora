@@ -1,0 +1,9 @@
+.git/
+.gitignore
+.vscode
+**/migrations/
+README.md
+
+static/
+staticfiles/
+nginx/

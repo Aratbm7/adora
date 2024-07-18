@@ -1,9 +1,13 @@
 from .base import *
 
 
+# DEBUG =  bool(int(os.environ.get("DEBUG", default=1)))
 DEBUG = True
 
+
+
 INSTALLED_APPS += ["debug_toolbar",]
+
 MIDDLEWARE += [ "debug_toolbar.middleware.DebugToolbarMiddleware",]
 
 ROOT_URLCONF = 'core.urls.urls_dev'
@@ -20,3 +24,4 @@ DEBUG_TOOLBAR_CONFIG = {
 }
 
 LANGUAGE_CODE = 'en'
+ 
