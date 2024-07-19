@@ -15,7 +15,7 @@ ENV HOME=/home/app
 ENV APP_HOME=/home/app/backend
 RUN mkdir /home/app
 RUN mkdir $APP_HOME
-RUN mkdir $APP_HOME/staticfiles
+RUN mkdir $APP_HOME/core/static
 RUN mkdir $APP_HOME/media
 
 WORKDIR $APP_HOME
@@ -27,11 +27,11 @@ WORKDIR $APP_HOME
 
 # Copy the requirements file into the image
 # COPY requirements.txt /code/
-COPY requirements.txt .
+COPY requirements-dev.txt .
 
 # Install dependencies
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install -r requirements-dev.txt
 
 
 # Copy the rest of the project into the image

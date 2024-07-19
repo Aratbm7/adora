@@ -2,7 +2,9 @@ version: "3.8"
 
 services:
   backend:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     # command: ./docker-entrypoint.sh
     ports:
       - "8000:8000"
@@ -14,8 +16,8 @@ services:
     
     volumes:
       - .:/home/app/backend/
-      - static_volume:/home/app/beckend/core/staticfiles
-      - media_volume:/home/app/beckend/media
+      - static_volume_lo:/home/app/beckend/core/staticfiles
+      - media_volume_lo:/home/app/beckend/media
 
     depends_on:
       - redis
@@ -24,11 +26,11 @@ services:
   db: 
     image: postgres:15-alpine
     volumes:
-      - postgres_data:/var/lib/postgresql/data/
+      - postgres_data_lo:/var/lib/postgresql/data/
     environment:
-      - POSTGRES_USER=adora_user
-      - POSTGRES_PASSWORD=1234
-      - POSTGRES_DB=adora_db
+      - POSTGRES_USER=adora_user_lo
+      - POSTGRES_PASSWORD=1234_lo
+      - POSTGRES_DB=adora_db_lo
       - POSTGRES_INITDB_ARGS:'--encoding=UTF-8'
 
     ports:
@@ -43,13 +45,13 @@ services:
   nginx:
     build: ./nginx
     volumes:
-      - static_volume:/home/app/beckend/core/staticfiles
+      - static_volume_lo:/home/app/beckend/core/staticfiles
     ports:
       - 80:8000
     depends_on:
       - backend
 
 volumes:
-  static_volume:
-  postgres_data:
-  media_volume:
+  static_volume_lo:
+  postgres_data_lo:
+  media_volume_lo:

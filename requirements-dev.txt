@@ -3,8 +3,8 @@ djangorestframework
 djangorestframework-simplejwt
 django-phonenumber-field
 django-phonenumbers  
-django-debug-toolbar
 django-filter
+django-debug-toolbar
 django-redis
 psycopg2-binary==2.9.6
 gunicorn==21.2.0

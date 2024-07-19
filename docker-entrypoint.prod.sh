@@ -11,9 +11,7 @@ echo "Waiting for postgres db to start.."
 echo "Making migrations for Django"
 python manage.py makemigrations adora
 python manage.py makemigrations account
-
-#flush db tables
-python manage.py flush --no-input
+python manage.py makemigrations 
 
 
 # Print a message indicating that Django migrations are being applied to the PostgreSQL database

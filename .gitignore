@@ -3,6 +3,7 @@
 settings.py
 settings1.py
 /static
+/staticfiles/*
 
 *.webp
 *.log
