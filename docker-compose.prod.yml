@@ -5,6 +5,8 @@ services:
     build: 
       context: .
       dockerfile: Dockerfile.prod
+
+    # image: backend:1.0
     volumes:
       - static_volume:/home/app/backend/core/static
       - media_volume:/home/app/backend/media
@@ -38,12 +40,15 @@ services:
 
   nginx:
     build: ./nginx
+    # image: nginx:1.0
     volumes:
       - static_volume:/home/app/backend/core/static
       - media_volume:/home/app/backend/media
       - gunicorn_socket:/var/run
+      - ./ssl:/etc/nginx/ssl
     ports:
       - 80:80
+      - 433:433
     depends_on:
       - backend
     restart: always

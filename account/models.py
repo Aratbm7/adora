@@ -4,6 +4,16 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from phonenumber_field.modelfields import PhoneNumberField
 from django.utils.translation import gettext as _ 
 from django.utils import timezone
+import base64
+import uuid 
+
+class DateFields(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_('تاریخ ثبت نام'), unique=True)
+    updated_at = models.DateTimeField(auto_now=True, verbose_name=_('تاریخ تغییر'))
+
+    class Meta:
+        abstract = True
+
 
 class UserManager(BaseUserManager):
     def create_user(self, phone_number, password=None, **extra_fields):
@@ -65,4 +75,40 @@ class User(AbstractBaseUser, PermissionsMixin):
     # class Profile(models.Model):
     #     first_name = models.CharField(_("first name"), max_length=150, blank=True, verbose_name=_("نام"))
     #     last_name = models.CharField(_("last name"), max_length=150, blank=True, verbose_name=_("نام خانوادگی"))
+
+
+class Profile(DateFields):
+    first_name = models.CharField(_("نام"), max_length=150, blank=True, null=True)
+    last_name = models.CharField(_("نام خانوادگی"), max_length=150, blank=True, null=True)
+    id_card =  models.CharField(null=True, blank=True, max_length=10,  verbose_name=_('کد ملی'), 
+                            error_messages={"required": 'لطفا کد ملی را وارد کنید'}, unique=True)
+    email = models.EmailField(null=True, blank=True, verbose_name=_('ایمیل'))
+    referral_code = models.CharField(max_length=25, verbose_name=_('کد دعوت'), unique=True)
+    user = models.OneToOneField(User, on_delete=models.SET_NULL,related_name='profile',  verbose_name=_('کاربر'), null=True)
+    
+    def get_full_name(self):
+        return f"{self.first_name} {self.last_name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.referral_code:
+            while True:
+                new_referall_code = base64.urlsafe_b64encode(uuid.uuid4().bytes).decode("utf-8").rstrip()[:25]
+                if not User.objects.filter(referral_code=new_referall_code).exists():
+                    self.referral_code = new_referall_code
+                    break
+                
+        super(User, self).save(*args, **kwargs)
         
+        
+        
+    def __str__(self):
+        return self.get_full_name()
+    
+class Address(DateFields):
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='addresses', verbose_name=_('پروفایل'))
+    street_address = models.TextField(_("آدرس دقیق"))
+    city = models.CharField(_("شهر"), max_length=100)
+    state = models.CharField(_("استان"), max_length=100)
+    postal_code = models.CharField(_("کد پستی"), max_length=20)
+    # country = models.CharField(_("کشور"), max_length=100)
+

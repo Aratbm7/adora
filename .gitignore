@@ -1,4 +1,5 @@
 # Byte-compiled / optimized / DLL files
+ssl/
 *.sql
 settings.py
 settings1.py

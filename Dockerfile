@@ -13,10 +13,13 @@ ENV PYTHONUNBUFFERED 1
 
 ENV HOME=/home/app
 ENV APP_HOME=/home/app/backend
-RUN mkdir /home/app
-RUN mkdir $APP_HOME
-RUN mkdir $APP_HOME/core/static
-RUN mkdir $APP_HOME/media
+RUN mkdir -p $HOME $APP_HOME $APP_HOME/media $APP_HOME/core/static
+
+# Install ping
+RUN apt-get update && \
+    apt-get install -y iputils-ping && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR $APP_HOME
 
@@ -41,12 +44,19 @@ COPY . .
 # COPY ./docker-entrypoint.sh /home/app/backend/docker-entrypoint.sh
 # COPY ./wait-for-it.sh /home/app/backend/wait-for-it.sh
 
-COPY wait-for-it.sh /home/app/backend/wait-for-it.sh
 
+
+COPY docker-entrypoint.sh /home/app/backend/
+COPY docker-entrypoint-celery-worker.sh /home/app/backend/
+COPY docker-entrypoint-celery-beat.sh /home/app/backend/
+COPY docker-entrypoint-celery-flower.sh /home/app/backend/
+COPY wait-for-it.sh /home/app/backend/
 
 RUN chmod +x /home/app/backend/docker-entrypoint.sh
-RUN chmod +x  /home/app/backend/wait-for-it.sh
-
+RUN chmod +x /home/app/backend/docker-entrypoint-celery-worker.sh
+RUN chmod +x /home/app/backend/docker-entrypoint-celery-beat.sh
+RUN chmod +x /home/app/backend/docker-entrypoint-celery-flower.sh
+RUN chmod +x /home/app/backend/wait-for-it.sh
 # Set User
 # USER appuser
 

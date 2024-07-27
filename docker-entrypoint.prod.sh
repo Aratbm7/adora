@@ -48,5 +48,6 @@ fi
 echo "Running Django Production server with Gunicorn"
 
 echo "Starting Gunicorn with $NUM_WORKERS workers, binding to $SOCKET_PATH"
-exec gunicorn --workers $NUM_WORKERS --bind unix:$SOCKET_PATH $WSGI_APPLICATION --log-level debug
+exec gunicorn --workers $NUM_WORKERS --bind unix:$SOCKET_PATH $WSGI_APPLICATION \
+    --user adora_u --group adora_g 
 # exec gunicorn core.wsgi:application --bind unix:/run/gunicorn.sock --workers 3 --log-level debug
