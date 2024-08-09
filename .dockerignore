@@ -4,9 +4,11 @@ docker-compose*.yml
 .git/
 .gitignore
 .vscode
-**/migrations/
 README.md
-
 static/
 staticfiles/
 nginx/
+docker-compose*.yml
+Dockerfile
+*.tar
+**/migrations/*

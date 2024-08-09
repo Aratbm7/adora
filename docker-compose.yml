@@ -80,10 +80,13 @@ services:
       dockerfile: Dockerfile
     image: adora-app
     entrypoint: ./docker-entrypoint-celery-flower.sh
-    # volumes:
-    #   - .:/home/app/backend/
+    volumes:
+      - static_volume_lo:/home/app/backend/core/static
     env_file:
       - ./.env.dev
+
+    environment:
+      - DJANGO_ENV=development
     ports:
       - 5557:5555
     depends_on:

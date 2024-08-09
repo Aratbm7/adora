@@ -12,3 +12,4 @@ python-dotenv
 celery[redis]
 flower
 drf-yasg[validation]
+requests 

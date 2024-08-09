@@ -2,11 +2,11 @@ version: '3.8'
 
 services:
   backend:
-    build: 
-      context: .
-      dockerfile: Dockerfile.prod
-
-    # image: backend:1.0
+    # build: 
+    #   context: .
+    #   dockerfile: Dockerfile.prod
+    # image: adora-app
+    image: adora-backend
     volumes:
       - static_volume:/home/app/backend/core/static
       - media_volume:/home/app/backend/media
@@ -40,7 +40,7 @@ services:
 
   nginx:
     build: ./nginx
-    # image: nginx:1.0
+    # image: adora-nginx
     volumes:
       - static_volume:/home/app/backend/core/static
       - media_volume:/home/app/backend/media
@@ -48,10 +48,62 @@ services:
       - ./ssl:/etc/nginx/ssl
     ports:
       - 80:80
-      - 433:433
+      - 443:443
     depends_on:
       - backend
     restart: always
+
+  celery:
+    # build:
+      # context: .
+      # dockerfile: Dockerfile.prod
+    image: adora-backend
+    
+    entrypoint: ./docker-entrypoint-celery-worker.sh
+    # volumes:
+    #   - .:/home/app/backend/
+    env_file:
+      - ./.env.prod
+    environment:
+      - DJANGO_ENV=production
+    depends_on:
+      - redis
+      - db
+      - backend
+
+# celery_beat:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.prod
+  #   image: adora-app
+  #   entrypoint: ./docker-entrypoint-celery-beat.sh
+  #   # volumes:
+  #   #   - .:/home/app/backend/
+  #   env_file:
+  #     - ./.env.dev
+    # environment:
+    #   - DJANGO_ENV=production
+  #   depends_on:
+  #     - redis
+  #     - db
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    # image: adora-backend
+    entrypoint: ./docker-entrypoint-celery-flower.sh
+    volumes:
+      - static_volume:/home/app/backend/core/static
+    env_file:
+      - ./.env.prod
+    environment:
+      - DJANGO_ENV=production
+    ports:
+      - 5557:5555
+    depends_on:
+      - redis
+      - db
 
 volumes:
   postgres_data:

@@ -26,8 +26,16 @@ class VerifyOtpSerializer(serializers.Serializer):
     otp = serializers.IntegerField(max_value=999999, min_value=100000)
     
     # This field is iptional for using 
-    password = serializers.CharField(min_length=6)
+    password = serializers.CharField(min_length=6, required=False)
     
+    def validate(self, attrs):
+        request_type = self.context.get('request_type', '')
+        
+        if request_type == 'set_change_pass':
+            if 'password' not in attrs or not attrs.get('password', ''):
+                
+               raise serializers.ValidationError({'password': 'Password is required for this request type.'})
+        return super().validate(attrs)
 
 class UserSerializer(serializers.ModelSerializer):
     phone_number = PhoneNumberField()

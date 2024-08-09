@@ -1,3 +1,7 @@
-# from django.contrib import admin, sit
-# from django.contrib.admin import register
-# # Register your models here.
+from django.contrib import admin
+from account.models import *
+
+admin.site.register(User)
+admin.site.register(Profile)
+admin.site.register(Address)
+

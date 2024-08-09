@@ -82,12 +82,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     "default": {
-        "ENGINE": os.environ.get("SQL_ENGINE"),
-        "NAME": os.environ.get("SQL_DATABASE",),
-        "USER": os.environ.get("SQL_USER",),
-        "PASSWORD": os.environ.get("SQL_PASSWORD" ),
-        "HOST": os.environ.get("SQL_HOST", ),
-        "PORT": os.environ.get("SQL_PORT", ),
+        "ENGINE": os.environ.get("SQL_ENGINE", 'django.db.backends.postgresql'),
+        "NAME": os.environ.get("SQL_DATABASE",'adora_db_lo'),
+        "USER": os.environ.get("SQL_USER",'adora_user_lo'),
+        "PASSWORD": os.environ.get("SQL_PASSWORD", '1234_lo'),
+        "HOST": os.environ.get("SQL_HOST", 'db' ),
+        "PORT": os.environ.get("SQL_PORT", '6379'),
     }
 }
 

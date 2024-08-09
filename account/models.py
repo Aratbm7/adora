@@ -86,6 +86,10 @@ class Profile(DateFields):
     referral_code = models.CharField(max_length=25, verbose_name=_('کد دعوت'), unique=True)
     user = models.OneToOneField(User, on_delete=models.SET_NULL,related_name='profile',  verbose_name=_('کاربر'), null=True)
     
+    class Meta:
+        verbose_name = _('پروفایل')
+        verbose_name_plural = ('پروفایل ها')
+        
     def get_full_name(self):
         return f"{self.first_name} {self.last_name}"
     
@@ -100,7 +104,7 @@ class Profile(DateFields):
         super(User, self).save(*args, **kwargs)
         
         
-        
+    
     def __str__(self):
         return self.get_full_name()
     
@@ -111,4 +115,14 @@ class Address(DateFields):
     state = models.CharField(_("استان"), max_length=100)
     postal_code = models.CharField(_("کد پستی"), max_length=20)
     # country = models.CharField(_("کشور"), max_length=100)
-
+    
+    class Meta:
+        verbose_name = _('آدرس')
+        verbose_name_plural = ('آدرس ها')
+        
+    def __str__(self):
+        if len(self.street_address) > 10:
+            short_address = self.street_address[:10] + "..."
+        else:
+            short_address = self.street_address
+        return f"{self.city}, {self.state}, {short_address}"

@@ -1,13 +1,14 @@
 from rest_framework import serializers
-from adora.models import Category, Product, ProductImage, Brand
+from adora.models import Category, Product, ProductImage, Brand, Comment, Matrial
 from django.core.exceptions import ValidationError
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
-        fields = '__all__'
-
+        # fields = ('id', 'alt', 'image_url', 'product')
+        exclude = ('created_date', 'updated_date')
+        
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
@@ -15,9 +16,9 @@ class CategorySerializer(serializers.ModelSerializer):
         
         
 class SimilarProductsSerializer(serializers.ModelSerializer):
-    category = serializers.SerializerMethodField(read_only=True)
+    # category = serializers.SerializerMethodField(read_only=True)
     # material = serializers.SerializerMethodField(read_only=True)
-    # compatible_cars = serializers.SerializerMethodField(read_only=True)
+    compatible_cars = serializers.SerializerMethodField(read_only=True)
     discounted_price = serializers.SerializerMethodField(read_only=True)
     discounted_wallet = serializers.SerializerMethodField(read_only=True)
     brand= serializers.SerializerMethodField(read_only=True)
@@ -67,10 +68,18 @@ class SimilarProductsSerializer(serializers.ModelSerializer):
     
     def get_discounted_wallet(self, obj):
         return (obj.price * obj.wallet_discount) / 100
+    
+class MaterialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Matrial
+        fields = ['id', 'material_name']
+
 
 class ProductRetrieveSerializer(serializers.ModelSerializer):
-    category = serializers.SerializerMethodField(read_only=True)
-    material = serializers.SerializerMethodField(read_only=True)
+    # main_category = serializers.CharField(source='category.fa_name', read_only=True)
+    # minor_category = serializers.CharField(source='material.material_name', read_only=True)
+    main_category = CategorySerializer(read_only=True, source='category')
+    minor_category = MaterialSerializer(read_only=True, source='material')
     compatible_cars = serializers.SerializerMethodField(read_only=True)
     # image = serializers.SerializerMethodField(read_only=True)
     discounted_price = serializers.SerializerMethodField(read_only=True)
@@ -98,13 +107,15 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
                   'guarantee',
                   'guarantee_duration',
                   'new',
-                  'material',
-                  'category',
+                  'minor_category',
+                  'main_category',
                   'compatible_cars',
                   'similar_products',
                   'brand',
                   'images',
-                  'description',
+                  'title_description',
+                  'packing_description',
+                  'shopping_description',
                   'buyer',
                   'customer_point',
              
@@ -146,8 +157,8 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
 
 
 class ProductListSerializer(serializers.ModelSerializer):
-    category = serializers.SerializerMethodField(read_only=True)
-    material = serializers.SerializerMethodField(read_only=True)
+    main_category = CategorySerializer(read_only=True, source='category')
+    minor_category = MaterialSerializer(read_only=True, source='material')
     compatible_cars = serializers.SerializerMethodField(read_only=True)
     # image = serializers.SerializerMethodField(read_only=True)
     discounted_price = serializers.SerializerMethodField(read_only=True)
@@ -174,12 +185,14 @@ class ProductListSerializer(serializers.ModelSerializer):
                   'guarantee',
                   'guarantee_duration',
                   'new',
-                  'material',
-                  'category',
+                  'minor_category',
+                  'main_category',
                   'compatible_cars',
                   'brand',
                   'images',
-                  'description',
+                  'title_description',
+                  'packing_description',
+                  'shopping_description',
                   'buyer',
                   'customer_point',
    
@@ -213,3 +226,27 @@ class BrandSerializer(serializers.ModelSerializer):
     class Meta:
         model = Brand
         fields = '__all__'
+        
+        
+class CommentSerializer(serializers.ModelSerializer):
+    replies = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Comment
+        fields = ['id', 'user','product', 'parent', 'text', 'rating', 'created_date', 'updated_date', 'replies']
+
+    def get_replies(self, obj):
+        replies = obj.replies.all()  # Fetch all replies to the current comment
+        return CommentSerializer(replies, many=True).data  # Serialize each reply
+
+    def validate_rating(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError("Rating must be between 1 and 5")
+        return value
+    
+    
+    # def validate(self, data):
+    #     product = data.get('product')
+    #     if product and Comment.objects.filter(product=product).count() >= 5:
+    #         raise serializers.ValidationError("A product cannot have more than 5 comments")
+    #     return data

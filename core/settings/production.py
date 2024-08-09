@@ -13,7 +13,7 @@ from .base import *
 
 
 # DEBUG =  bool(int(os.environ.get("DEBUG", default=0)))
-DEBUG = False
+DEBUG = True
 ROOT_URLCONF = 'core.urls.urls_prod'
 
 
@@ -22,7 +22,7 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": False,
 
     "ALGORITHM": "HS256",
