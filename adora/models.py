@@ -20,12 +20,37 @@ class Category(Date):
     name = models.CharField(max_length=500, verbose_name="نام")
     image = models.URLField(max_length=500, verbose_name=_("لینک محصول"))
     alt = models.CharField(null=True,blank=True, max_length=500, verbose_name="نام عکس")
+    parent = models.ForeignKey(
+        'self', 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True, 
+        related_name='children', 
+        verbose_name="دسته بندی مادر"
+    )
 
     class Meta:
        verbose_name = _("دسته بندی")
        verbose_name_plural = _("دسته بندی کل") 
     def __str__(self) -> str:
         return self.name
+    
+    def get_level(self):
+        """ Returns the level of the category based on the parent hierarchy. """
+        if self.parent is None:
+            return 1
+        elif self.parent.parent is None:
+            return 2
+        else:
+            return 3
+        
+    def get_descendants(self):
+        descendants = []
+        children = self.children.all()
+        for child in children:
+            descendants.append(child)
+            descendants.extend(child.get_descendants())
+        return descendants
 
 
 class Car(Date):
@@ -85,6 +110,7 @@ class ProductImage(Date):
         return str(self.id)
        
 class Product(Date):
+    custom_id = models.PositiveBigIntegerField(default=0, unique=True, verbose_name=_('شناسه محصول'))
     fa_name = models.CharField(max_length=500, verbose_name="نام فارسی")
     en_name = models.CharField(max_length=500, verbose_name="نام انگلیسی")
     price = models.PositiveBigIntegerField( verbose_name="قیمت محصول")
@@ -121,9 +147,9 @@ class Comment(Date):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='comments',verbose_name="محصول")
     parent = models.ForeignKey('self', blank=True, null=True, on_delete=models.CASCADE, related_name='replies', verbose_name='پاسخ')
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='comments', verbose_name='کاربر')
-
     text = models.TextField(verbose_name="متن کامنت")
     rating = models.PositiveSmallIntegerField(default=0, verbose_name="امتیاز", help_text="امتیاز باید بین 1 تا 5 باشد")
+    buy_suggest = models.BooleanField(default=False, verbose_name=_('پیشنهاد خرید'))
 
     class Meta:
         verbose_name = _("کامنت")

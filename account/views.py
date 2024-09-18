@@ -12,15 +12,18 @@ from account.tasks import send_otp_to_phone
 from django.conf import settings
 import random
 import hashlib 
+from rest_framework.exceptions import PermissionDenied
 from datetime import timedelta, datetime
 from celery.result import AsyncResult
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.http import HttpRequest
 # from rest_framework.generics import Re
 from rest_framework.viewsets import ModelViewSet
+from core.permissions import personal_permissions, object_level_permissions, address_object_level_permissions, object_level_permissions_restricted_actions
+from rest_framework.decorators import action
 
 class SendOtpCode(APIView):
-    permission_classes = [permissions.AllowAny ]
+    permission_classes = [permissions.AllowAny]
     http_method_names = ['post']
     
     def post(self, request: HttpRequest, *args, **kwargs):
@@ -77,7 +80,7 @@ class VerifyOtp(APIView):
         
         phone_number = cached_data.get('phone_number', '')
         # phone_number = '+98' + phone_number
-        cached_otp = cached_data.get('otp', 0)
+        cached_otp = cached_data.get('otp', '')
         if  cached_otp != str(otp):
             return Response({'error':"Sended otp is not correct!"}, status=status.HTTP_400_BAD_REQUEST)
             
@@ -95,6 +98,7 @@ class VerifyOtp(APIView):
                     new_user = User.objects.create_user(phone_number=phone_number)
                     new_refresh : RefreshToken= RefreshToken.for_user(new_user)
                     cache.delete(cache_key)
+                    
                     return Response({'access': str(new_refresh.access_token),
                                     'refresh': str(new_refresh),
                                     'user_registered': True},
@@ -136,13 +140,91 @@ class VerifyOtp(APIView):
             
 
 class ProfileViewSet(ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated]
-    queryset = Profile.objects.all()
+    http_method_names = ['get', 'put']
+    permission_classes = [personal_permissions({'u':31, 'o': 0, 'a': 63}),
+                          object_level_permissions({'u':63, 'o': 0, 'a': 63})]
     serializer_class = ProfileSerializer
             
+    
+    def perform_update(self, serializer):
+        serializer.save(user=self.request.user)
+        
+    def get_queryset(self):
+        if self.request.user.is_staff or self.request.user.is_superuser:
+            # Admins can see all profiles
+            return Profile.objects.select_related('user').all()
+        else:
+            # Regular users can only see their own profile
+            return Profile.objects.filter(user=self.request.user)
+        
+        
+    def get_permissions(self):
+        # Apply custom permissions only for the 'me' action
+        if self.action == 'me':
+            return [permissions.IsAuthenticated()]  # Allow only authenticated users
+        return super().get_permissions()
+
+    @action(detail=False, methods=['get'])
+    def me(self, request, pk=None):
+        try:
+            # Fetch the profile of the logged-in user
+            profile = Profile.objects.get(user=request.user)
+            serializer = self.get_serializer(profile)
+            return Response(serializer.data)
+        except Profile.DoesNotExist:
+            return Response({"detail": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
+    
 class AddressViewSet(ModelViewSet):
+    http_method_names = ['get', 'put', 'post']
+
+    # def perform_update(self, serializer):
+    #     serializer.save(user=self.request.user)
+
+    
+    [personal_permissions({'u':31 , 'o': 0, 'a': 63}),
+    address_object_level_permissions({'u':63, 'o': 0, 'a': 63})]
     permission_classes = [permissions.IsAuthenticated]
     queryset = Address.objects.all()
     serializer_class = AddressSerilizer
+    
+    def get_queryset(self):
+        profile_pk = self.kwargs['profile_pk']
+        profile = Profile.objects.filter(id=profile_pk).first()
+        if profile:
+            if profile.user == self.request.user:
+                return Address.objects.filter(profile_id=self.kwargs['profile_pk'])
+
+            else:
+                raise PermissionDenied("You do not have permission to access addresses for this profile.")
+        else:
+            raise PermissionDenied("Profile does not exist.")
+        
+        
+
+    # def get_queryset(self):
+    #     # Ensure users only see addresses related to their profile
+    #     user = self.request.user
+    #     if user.is_authenticated:
+    #         return Address.objects.filter(profile__user=user)
+    #     return Address.objects.none()  # Return an empty queryset for unauthenticated users
+
+    # def get_queryset(self):
+    #     user = self.request.user
+    #     if user.is_superuser or user.is_staff:
+    #         return Address.objects.all()
+    #     return Address.objects.filter(profile__user=user)
+    
+    def perform_create(self, serializer):
+        profile = Profile.objects.get(pk=self.kwargs['profile_pk'])
+        serializer.save(profile=profile)
+        
+    def perform_update(self, serializer):
+        profile = Profile.objects.get(pk=self.kwargs['profile_pk'])
+        serializer.save(profile=profile)
+        
+        
+
+        
+    
        
             

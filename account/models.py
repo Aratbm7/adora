@@ -60,7 +60,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         
     
     def __str__(self) -> str:
-        return str(self.phone_number)
+        return str(self.id)
     
     def has_perm(self, perm, obj=None):
         return True
@@ -83,7 +83,7 @@ class Profile(DateFields):
     id_card =  models.CharField(null=True, blank=True, max_length=10,  verbose_name=_('کد ملی'), 
                             error_messages={"required": 'لطفا کد ملی را وارد کنید'}, unique=True)
     email = models.EmailField(null=True, blank=True, verbose_name=_('ایمیل'))
-    referral_code = models.CharField(max_length=25, verbose_name=_('کد دعوت'), unique=True)
+    # referral_code = models.CharField(max_length=25, verbose_name=_('کد دعوت'), unique=True)
     user = models.OneToOneField(User, on_delete=models.SET_NULL,related_name='profile',  verbose_name=_('کاربر'), null=True)
     
     class Meta:
@@ -93,15 +93,15 @@ class Profile(DateFields):
     def get_full_name(self):
         return f"{self.first_name} {self.last_name}"
     
-    def save(self, *args, **kwargs):
-        if not self.referral_code:
-            while True:
-                new_referall_code = base64.urlsafe_b64encode(uuid.uuid4().bytes).decode("utf-8").rstrip()[:25]
-                if not User.objects.filter(referral_code=new_referall_code).exists():
-                    self.referral_code = new_referall_code
-                    break
+    # def save(self, *args, **kwargs):
+    #     if not self.referral_code:
+    #         while True:
+    #             new_referall_code = base64.urlsafe_b64encode(uuid.uuid4().bytes).decode("utf-8").rstrip()[:25]
+    #             if not User.objects.filter(referral_code=new_referall_code).exists():
+    #                 self.referral_code = new_referall_code
+    #                 break
                 
-        super(User, self).save(*args, **kwargs)
+    #     super(User, self).save(*args, **kwargs)
         
         
     

@@ -11,4 +11,4 @@ nginx/
 docker-compose*.yml
 Dockerfile
 *.tar
-**/migrations/*
+# **/migrations/*

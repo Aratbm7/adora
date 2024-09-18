@@ -23,7 +23,7 @@ class SendOtpSerilizer(serializers.Serializer):
      
 class VerifyOtpSerializer(serializers.Serializer):
     phone_hash = serializers.CharField(max_length=64, min_length=64)
-    otp = serializers.IntegerField(max_value=999999, min_value=100000)
+    otp = serializers.CharField()
     
     # This field is iptional for using 
     password = serializers.CharField(min_length=6, required=False)
@@ -43,13 +43,21 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'phone_number']
     
-        
+
+
+class AddressSerializerForProduct(serializers.ModelSerializer):
+    class Meta:
+        model = Address  # Assuming Address is the model related to Profile
+        fields = ['id', 'street_address', 'city', 'state', 'postal_code']  # Adjust fields as needed
+
 class ProfileSerializer(serializers.ModelSerializer):
+    user = serializers.StringRelatedField( read_only=True)
     
+    addresses = AddressSerializerForProduct(many=True,read_only=True)
     class Meta:
         model=Profile
-        # fields = ['id','id_card', 'first_name', 'last_name','user', 'addresses']
-        fields = '__all__'
+        fields = ['id','id_card', 'first_name', 'last_name','user', 'addresses']
+        # fields = '__all__'
         
     def validate_id_card(self, value):
         
@@ -63,7 +71,10 @@ class ProfileSerializer(serializers.ModelSerializer):
             
         
 class AddressSerilizer(serializers.ModelSerializer):
-    
+    profile = serializers.StringRelatedField(read_only=True)
     class Meta:
         model = Address 
-        fields = '__all__'
+        fields = ('id', 'profile', 'street_address','state', 'city', 'postal_code')
+        
+        
+        

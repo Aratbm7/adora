@@ -21,7 +21,8 @@ services:
       - media_volume_lo:/home/app/beckend/media
 
     depends_on:
-      - redis
+      - redis_master
+      - redis_replica
       - db
 
   db:
@@ -37,16 +38,13 @@ services:
     ports:
       - 5432:5432
 
-  redis:
-    image: "redis:alpine"
-    ports:
-      - "6379:6379"
 
   celery:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     image: adora-app
+    user: "1000:1000"
     
     entrypoint: ./docker-entrypoint-celery-worker.sh
     # volumes:
@@ -56,10 +54,31 @@ services:
     environment:
       - DJANGO_ENV=development
     depends_on:
-      - redis
+      - redis_master
+      - redis_replica
       - db
       - backend
 
+  redis_master:
+    image: "redis:alpine"
+    container_name: redis_master
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_master_data:/data
+    command: redis-server --requirepass "1234"  # Optional: If you want to set a password
+    restart: always
+
+  redis_replica:
+    image: "redis:alpine"
+    container_name: redis_replica
+    environment:
+      - REDIS_MASTER_HOST=redis_master
+      - REDIS_MASTER_PORT=6379
+    command: redis-server --slaveof redis_master 6379 --requirepass "1234" --masterauth "1234"  # Optional: if using password
+    ports:
+      - "6380:6379"  # Map to a different port to avoid conflict
+    restart: always
   # celery_beat:
   #   build:
   #     context: .
@@ -72,7 +91,7 @@ services:
   #     - ./.env.dev
   #   depends_on:
   #     - redis
-  #     - db
+      # - db
 
   flower:
     build:
@@ -87,13 +106,14 @@ services:
 
     environment:
       - DJANGO_ENV=development
+      - REDIS_PASSWORD="1234"
     ports:
       - 5557:5555
     depends_on:
-      - redis
+      - redis_master
       - db
 
-    # restart: unless-stopped
+    restart: unless-stopped
   # nginx:
   #   build: ./nginx
   #   volumes:
@@ -107,4 +127,5 @@ volumes:
   static_volume_lo:
   postgres_data_lo:
   media_volume_lo:
+  redis_master_data:
 

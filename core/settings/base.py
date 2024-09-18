@@ -18,7 +18,8 @@ SECRET_KEY = 'django-insecure-xz$p@moc34)7x+$7a-u75f=m)hq0j--q#)ubfdaq_od0gzl7z1
 # SECURITY WARNING: don't run with debug turned on in production!
 # DEBUG =  bool(os.environ.get("DEBUG", default=0))
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(" ")
+# ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(" ")
+ALLOWED_HOSTS = ['*']
 
 # Application definition
 
@@ -29,18 +30,21 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders', 
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'drf_yasg',
     'django_filters',
-    'account',
+    'account.apps.AccountConfig',
     'adora',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -147,18 +151,22 @@ REST_FRAMEWORK = {
     ),
 
 }
-
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/1",
-        "LOCATION": "redis://redis:6379/1",
+        "LOCATION": "redis://:1234@redis_master:6379/1",  # Auth password is included
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    },
+    "replica": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://:1234@redis_replica:6380/1",  # Reading from replica
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
     }
 }
-}
-
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -168,8 +176,8 @@ STATIC_ROOT = BASE_DIR / "static"
 
 
 # CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/0"
-CELERY_BROKER_URL = 'redis://redis:6379/0'
-CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
+CELERY_BROKER_URL = "redis://:1234@redis_master:6379/0"
+CELERY_RESULT_BACKEND = "redis://:1234@redis_master:6379/0"
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -188,6 +196,10 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 
-APPEND_SLASH = False
+APPEND_SLASH = True
 CACHE_TTL = 1 * 60
 
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"  # Points to the master Redis
+
+CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins (use with caution)
