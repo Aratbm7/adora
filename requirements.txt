@@ -15,3 +15,5 @@ drf-yasg[validation]
 requests 
 django-cors-headers
 drf-nested-routers==0.93.4
+python-Levenshtein
+fuzzywuzzy

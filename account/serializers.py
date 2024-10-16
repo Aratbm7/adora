@@ -51,12 +51,13 @@ class AddressSerializerForProduct(serializers.ModelSerializer):
         fields = ['id', 'street_address', 'city', 'state', 'postal_code']  # Adjust fields as needed
 
 class ProfileSerializer(serializers.ModelSerializer):
-    user = serializers.StringRelatedField( read_only=True)
+    user = serializers.StringRelatedField(read_only=True)
+    wallet_balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     
     addresses = AddressSerializerForProduct(many=True,read_only=True)
     class Meta:
         model=Profile
-        fields = ['id','id_card', 'first_name', 'last_name','user', 'addresses']
+        fields = ['id','id_card', 'first_name', 'last_name','user', 'addresses', "wallet_balance"]
         # fields = '__all__'
         
     def validate_id_card(self, value):

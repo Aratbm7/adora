@@ -1,7 +1,19 @@
 from rest_framework import serializers
-from adora.models import Category, Product, ProductImage, Brand, Comment, Matrial, Car
-from django.core.exceptions import ValidationError
+from adora.models import (Category,
+                          Product,
+                          ProductImage,
+                          Brand,
+                          Comment,
+                          Matrial,
+                          Car,
+                          Order,
+                          OrderItem,)
+
 from django.core.exceptions import ObjectDoesNotExist
+from rest_framework.exceptions import ValidationError
+from django.db import transaction, IntegrityError
+from decimal import Decimal
+from adora.tasks import send_payment_information
 
 
 class CarSerializer(serializers.ModelSerializer):
@@ -145,9 +157,9 @@ class CommentSerializer(serializers.ModelSerializer):
     def get_user(self,obj):
         # profile = getattr(obj.user,'profile', None)
         # if profile and profile.first_name:
-        #     return f"{obj.user.profile.first_name} {obj.user.profile.last_name}"
+            
         
-        return obj.user.id
+        return  {'full_name': f"{obj.user.profile.first_name} {obj.user.profile.last_name}", 'id':  obj.user.id }
 
 
 class ProductSearchSerializer(serializers.ModelSerializer):
@@ -155,12 +167,9 @@ class ProductSearchSerializer(serializers.ModelSerializer):
     discounted_price = serializers.SerializerMethodField(read_only=True)
     discounted_wallet = serializers.SerializerMethodField(read_only=True)
     wallet_discount_percent = serializers.CharField(source='wallet_discount')
-    main_category = CategorySerializer(read_only=True, source='category')
+    # main_category = CategorySerializer(read_only=True, source='category')
     compatible_cars = serializers.SerializerMethodField(read_only=True)
     brand= BrandSerializer(read_only=True)
-
-
-
 
     class Meta:
         model = Product
@@ -177,13 +186,10 @@ class ProductSearchSerializer(serializers.ModelSerializer):
                   'install_location',
                   'guarantee',
                   'new',
-                  'main_category',
+                  'best_seller',
                   'compatible_cars',
                   'brand',
                   'images',
-                  'buyer',
-                  'customer_point',
-
                   ]
         
     def get_discounted_price(self,obj):
@@ -202,11 +208,9 @@ class ProductSearchSerializer(serializers.ModelSerializer):
 
 class ProductRetrieveSerializer(serializers.ModelSerializer):
     # main_category = serializers.CharField(source='category.fa_name', read_only=True)
-    # minor_category = serializers.CharField(source='material.material_name', read_only=True)
     # comments = CommentSerializer(read_only=True, many=True)
     comments = serializers.SerializerMethodField()
     main_category = CategorySerializer(read_only=True, source='category')
-    # minor_category = MaterialSerializer(read_only=True, source='material')
     compatible_cars = serializers.SerializerMethodField(read_only=True)
     # image = serializers.SerializerMethodField(read_only=True)
     discounted_price = serializers.SerializerMethodField(read_only=True)
@@ -218,7 +222,6 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
     wallet_discount_percent = serializers.CharField(source='wallet_discount')
 
 
-    
     class Meta:
         model = Product
         fields = ['id',
@@ -241,6 +244,7 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
                   'similar_products',
                   'brand',
                   'images',
+                  'best_seller',
                   'title_description',
                   'packing_description',
                   'shopping_description',
@@ -249,12 +253,7 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
                   'comments', 
              
                   ]
-        
-        
-    # def get_brand(self, obj):
-    #     return {'id': obj.brand.id, 'name': obj.brand.name, 'image_url': obj.brand.image, 'alt': obj.brand.alt}
-        
-        
+
     def get_comments(self, obj):
         comments = obj.comments.filter(parent__isnull=True)
         return CommentSerializer(comments, many=True).data
@@ -289,10 +288,8 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
     #     except ValidationError as e:
     #         raise serializers.ValidationError("Custom error message for price validation")
 
-
 class ProductListSerializer(serializers.ModelSerializer):
     main_category = CategorySerializer(read_only=True, source='category')
-    # minor_category = MaterialSerializer(read_only=True, source='material')
     compatible_cars = serializers.SerializerMethodField(read_only=True)
     # image = serializers.SerializerMethodField(read_only=True)
     discounted_price = serializers.SerializerMethodField(read_only=True)
@@ -304,7 +301,6 @@ class ProductListSerializer(serializers.ModelSerializer):
     wallet_discount_percent = serializers.CharField(source='wallet_discount')
 
 
-    
     class Meta:
         model = Product
         fields = ['id',
@@ -320,6 +316,7 @@ class ProductListSerializer(serializers.ModelSerializer):
                   'install_location',
                   'count_in_box',
                   'guarantee',
+                  'best_seller',
                   'guarantee_duration',
                   'new',
                   'main_category',
@@ -334,8 +331,6 @@ class ProductListSerializer(serializers.ModelSerializer):
                   'comments'
    
                   ]
-        
-        
         
     # def get_brand(self, obj):
     #     return {'id': obj.brand.id, 'name': obj.brand.name, 'image_url': obj.brand.image, 'alt': obj.brand.alt}
@@ -362,10 +357,164 @@ class ProductListSerializer(serializers.ModelSerializer):
     def get_discounted_wallet(self, obj):
         return (obj.price * obj.wallet_discount) / 100
 
-
-    
     # def validate(self, data):
     #     product = data.get('product')
     #     if product and Comment.objects.filter(product=product).count() >= 5:
     #         raise serializers.ValidationError("A product cannot have more than 5 comments")
     #     return datam
+    
+class OrderItemSerializer(serializers.ModelSerializer):
+    # product = ProductSearchSerializer()
+    class Meta:
+        model = OrderItem
+        fields = ('id','product', 'quantity')
+            
+class OrderSerializer(serializers.ModelSerializer):
+    order_items = OrderItemSerializer(many=True)
+    amount_used_wallet_balance = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, read_only=True)
+    total_price = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, read_only=True)
+    order_reward = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, read_only=True)
+    tracking_number = serializers.CharField(max_length=20, read_only=True)
+    payment_status = serializers.CharField(read_only=True)
+    delivery_status = serializers.CharField(read_only=True)
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
+    
+    class Meta:
+        model = Order
+        fields = ('id',
+                  'tracking_number', 
+                  'payment_status',
+                  'payment_method',
+                  'payment_reference',
+                  'delivery_status',
+                  'delivery_date',
+                  'delivery_address',
+                  'delivery_cost',
+                  'total_price',
+                  'use_wallet_balance',
+                  'amount_used_wallet_balance',
+                  'order_reward', 
+                  'extra_describtion',
+                  'receiver_phone_number',
+                  'receiver_full_name',
+                  'receiver_choose',
+                  'user',
+                  'order_items',
+                  'created_date',
+                  'updated_date',)
+        
+    def calculate_total_price(self, order):
+        total = sum([item.get_total() for item in order.order_items.all()])
+        order.total_price = total + order.delivery_cost
+        order.save()
+
+    def calculate_order_reward(self, order):
+        """_summary_
+            This reward calculated by each order item and saved in user
+            wallet
+        """
+        total_reward = sum([item.get_wallet_reward() for item in order.order_items.all()])
+        order.order_reward = total_reward
+        order.save()
+        
+       
+    def _get_wallet_balance(sel, order) -> Decimal:
+        return order.user.profile.wallet_balance
+        
+    def use_user_walet_balance_in_order(self, order):
+        """This method use mines wallet balance from total price 
+        """    
+        wallet_balance = self._get_wallet_balance(order)
+
+        order.amount_used_wallet_balance = wallet_balance
+        order.total_price -= wallet_balance
+        order.save()
+
+
+    def create(self, validated_data):
+        order_items_data = validated_data.pop('order_items')
+        
+ 
+        try:
+            # Wrap everything in a transaction to ensure atomicity
+            with transaction.atomic():
+                    # Create the order
+                order = Order.objects.create(**validated_data)
+                # Create the order items in bulk
+                order_items = [OrderItem(order=order, **item_data) for item_data in order_items_data]
+                OrderItem.objects.bulk_create(order_items)
+
+                # Trigger order logic like wallet balance, etc.
+                self.calculate_total_price(order)
+            
+                # Save total reward to user's wallet
+                if order.use_wallet_balance:
+                    print(' order.use_wallet_balance',  order.use_wallet_balance)
+                    self.use_user_walet_balance_in_order(order)
+                    
+                # Save total reward of this order to user's wallet
+                self.calculate_order_reward(order)
+               
+                send_payment_information.delay(order.id)
+
+            return order
+
+        except IntegrityError as e: 
+            # Handle IntegrityError (e.g., unique constraints or foreign key issues)
+            raise ValidationError({"detail": f"Database integrity error: {str(e)}"})
+
+        except Exception as e:
+            # Catch any other exceptions and return an appropriate error message
+            raise ValidationError({"detail": f"An error occurred: {str(e)}"})
+        
+    def get_user(self, obj):      
+        return {'id': obj.user.id,
+                'phone_number': str(obj.user.phone_number),
+                'full_name': f"{obj.user.profile.first_name} {obj.user.profile.last_name}"}
+        
+        
+        
+class OrderListItemSerializer(serializers.ModelSerializer):
+    product = ProductSearchSerializer()
+    class Meta:
+        model = OrderItem
+        fields = ('id','product', 'quantity')
+            
+
+class OrderListSerializer(serializers.ModelSerializer):
+    order_items = OrderListItemSerializer(many=True)
+    user = serializers.SerializerMethodField()
+    class Meta:
+        model = Order
+        fields = ('id',
+                  'tracking_number', 
+                  'payment_status',
+                  'payment_method',
+                  'payment_reference',
+                  'delivery_status',
+                  'delivery_date',
+                  'delivery_address',
+                  'delivery_cost',
+                  'total_price',
+                  'use_wallet_balance',
+                  'amount_used_wallet_balance',
+                  'order_reward', 
+                  'extra_describtion',
+                  'receiver_phone_number',
+                  'receiver_full_name',
+                  'receiver_choose',
+                  'user',
+                  'order_items',
+                  'created_date',
+                  'updated_date',)
+        
+
+
+    def get_user(self, obj):      
+        return {'id': obj.user.id,
+                'phone_number': str(obj.user.phone_number),
+                'full_name': f"{obj.user.profile.first_name} {obj.user.profile.last_name}"}
+        
+        
+        
+        

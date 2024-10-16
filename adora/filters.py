@@ -28,7 +28,7 @@ class ProductFilter(filters.FilterSet):
 
     class Meta:
         model = Product
-        fields = ['category','compatible_cars', 'brand','compatible_cars', 'new', 'count']
+        fields = ['category','compatible_cars', 'brand','compatible_cars', 'new', 'count', 'best_seller']
 
     # def filter_min_price(self, queryset, name, value):
     #     try:

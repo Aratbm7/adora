@@ -1,8 +1,12 @@
+from importlib.util import module_from_spec
 from django.db import models
 from django.utils.translation import gettext as _ 
-from django.contrib.auth import get_user_model
-
-
+# from django.contrib.auth import get_user_model
+from phonenumber_field.modelfields import PhoneNumberField
+from django.conf import settings
+from decimal import Decimal
+import random
+import string
 # Create your models here.
 class Date(models.Model):
     created_date = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ایجاد")
@@ -52,21 +56,18 @@ class Category(Date):
             descendants.extend(child.get_descendants())
         return descendants
 
-
 class Car(Date):
     fa_name = models.CharField(max_length=100, verbose_name=_("نام فارسی"))
     image = models.URLField(max_length=500,null=True, blank=True, verbose_name=_("عکس محصول"))
     alt = models.CharField(null=True,blank=True, max_length=500, verbose_name="نام عکس")
 
-    
     class Meta:
         verbose_name = _("خودرو")
         verbose_name_plural = _(" خودرو ها")
 
     def __str__(self) -> str:
         return self.fa_name
-    
-    
+       
 class Brand(Date):
     name = models.CharField(max_length=100, verbose_name=_("نام"))
     image = models.URLField(null=True, blank=True, max_length=500, verbose_name=_("لینک محصول"))
@@ -80,8 +81,7 @@ class Brand(Date):
         
     def __str__(self) -> str:
         return self.name
-    
-    
+        
 class Matrial(Date):
     material_name = models.CharField(max_length=500, verbose_name=_("دسته بندی جز"))
     
@@ -92,7 +92,6 @@ class Matrial(Date):
         
     def __str__(self) -> str:
         return self.material_name
-    
     
 class ProductImage(Date):
     alt = models.CharField(null=True,blank=True, max_length=500, verbose_name="نام عکس")
@@ -127,7 +126,7 @@ class Product(Date):
     title_description = models.TextField(null=True, blank=True, verbose_name=_("توضیحات معرفی محصول"))
     packing_description = models.TextField(null=True, blank=True, verbose_name=_("توضیحات بسته بندی محصول"))
     shopping_description = models.TextField(null=True, blank=True, verbose_name=_("توضیحات خرید محصول"))
-    
+    best_seller = models.BooleanField(default=False, verbose_name=_('پر فروش'))
     material = models.ForeignKey(Matrial, related_name="products", on_delete=models.SET_NULL,  null=True, blank=True, verbose_name="جنس محصول")
     category = models.ForeignKey(Category, related_name="products", on_delete=models.CASCADE, verbose_name="دسته بندی" )
     brand = models.ForeignKey(Brand, null=True, related_name="products", on_delete=models.SET_NULL, verbose_name=_("شرکت سازنده"))
@@ -141,12 +140,205 @@ class Product(Date):
     def __str__(self):
         return self.fa_name
 
+class Order(Date):
+    PENDING_STATUS = 'P'
+    PAYMENT_STATUS_COMPLETE = 'C'
+    PAYMENT_STATUS_FAILED = 'F'
     
+    PAYMENT_STATUS_CHOICES = [
+        (PENDING_STATUS, 'Pending'),
+        (PAYMENT_STATUS_COMPLETE, 'Compelete'),
+        (PAYMENT_STATUS_FAILED, 'Failed')
+    ]
+    
+    payment_status = models.CharField(max_length=1, 
+                                      choices=PAYMENT_STATUS_CHOICES,
+                                      default=PENDING_STATUS,
+                                      verbose_name=_('وضعیت پرداخت'))
+    DELIVERY_STATUS_SHIPPED = 'S'
+    DELIVERY_STATUS_DELIVERED = 'D'
+    DELIVERY_STATUS_RETURNED = 'R'
+    
+    DELIVERY_STATUS_CHOICES = [
+    (PENDING_STATUS, 'Pending'),
+    (DELIVERY_STATUS_SHIPPED, 'Shipped'),
+    (DELIVERY_STATUS_DELIVERED, 'Delivered'),
+    (DELIVERY_STATUS_RETURNED, 'Returned')]
+    
+    PAYMENT_METHOD_ONLINE = 'O'
+    PAYMENT_METHOD_CASH = 'C'
+    PAYMENT_METHOD_CHOICES = [
+        (PAYMENT_METHOD_ONLINE, 'Online'),
+        (PAYMENT_METHOD_CASH, 'Cash'),
+    ]
+    
+    RECEIVER_IS_MYSELF = 'M'
+    RECEIVER_IS_OTHER = 'O'
+    RECEIVER_CHOICES = [(RECEIVER_IS_MYSELF,'Myself'),(RECEIVER_IS_OTHER, 'Other')]
+    tracking_number = models.CharField(max_length=20, unique=True, verbose_name=_('شماره پیگیری'))
+    payment_method = models.CharField(max_length=1,
+                                      choices=PAYMENT_METHOD_CHOICES,
+                                      default=PAYMENT_METHOD_ONLINE, verbose_name=_('روش پرداخت'))
+    payment_reference = models.CharField(max_length=100,
+                                         help_text=_('سامانه ای که کاربر از آن پرداخت را انجام میدهد در این فیلد ذخیره میشود'),
+                                         verbose_name=_('مرجع پرداخت'),
+                                         blank=True,
+                                         null=True)
+    delivery_status = models.CharField(max_length=1, choices=DELIVERY_STATUS_CHOICES,
+                                       default=PENDING_STATUS,
+                                       verbose_name=_('وضعیت تحویل'))
+    delivery_date = models.CharField(
+        max_length=150,
+        null=True,  
+        blank=True, 
+        verbose_name=_('تاریخ تحویل')  
+    )
+    delivery_address = models.TextField(verbose_name=_('آدرس تحویل'))
+    delivery_cost = models.DecimalField(max_digits=10,
+                                         decimal_places=2,
+                                         default=0,
+                                         verbose_name=_('هزینه پست'))
+    total_price = models.DecimalField(max_digits=10,
+                                      decimal_places=2,
+                                      default=0,
+                                      verbose_name=_('هزینه کل سفارش'))
+    use_wallet_balance = models.BooleanField(default=False,
+                                             help_text=_('اگر این مقدار true باشد تمام موجودی کیف پول در این سفارش استفاده میشود')
+                                             ,verbose_name=_('استفاده از کیف پول'))
+    
+    amount_used_wallet_balance = models.DecimalField(max_digits=10, 
+                                                     decimal_places=2,
+                                                     default=0,
+                                                     help_text=_('این مقدار از کلا مبلغ سفارش کم میشود و مبلغ قابل پرداخت این را محاسبه میکند'),
+                                                     verbose_name=_('پاداش استفاده شده'))
+    order_reward = models.DecimalField(max_digits=10, 
+                                                     decimal_places=2,
+                                                     default=0,
+                                                     help_text=_('این مقدار به کیف پول خریدار اضافه میگردد'),
+                                                     verbose_name=_('پاداش این سفارش'))
+    extra_describtion =models.TextField(null=True, blank=True, verbose_name=_('توضیحات کاربر'))                                                     
+    receiver_phone_number = PhoneNumberField(region='IR', verbose_name=_('شماره موبایل'))
+    receiver_full_name = models.CharField(max_length=200,verbose_name=_('نام گیرنده'))
+    receiver_choose = models.CharField(max_length=1, choices=RECEIVER_CHOICES, default=RECEIVER_IS_MYSELF,
+                                       verbose_name=_('انتخاب گیرنده'))
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name=_("کاربر"))
+    products = models.ManyToManyField(Product, through='OrderItem' ,related_name='orders',verbose_name=_('محصولات'))
 
+
+
+    def _generate_tracking_number(self):
+        prefix = 'ADO'
+        suffix_len = 19 - len(prefix)
+        suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=suffix_len))
+        return f"{prefix}_{suffix}"
+        
+    def generate_unique_tracking_number(self):
+        """Generate a unique tracking number."""
+        while True:
+            tracking_number = self._generate_tracking_number()
+            if not Order.objects.filter(tracking_number=tracking_number).exists():
+                return tracking_number
+            
+    def save(self, *args, **kwargs):
+        if not self.tracking_number: 
+            self.tracking_number =  self.generate_unique_tracking_number()
+            
+        # # super().save(*args, **kwargs)
+        # self.calculate_total_price()
+        
+        # # Save total reward to user's wallet
+        # if self.use_wallet_balance:
+        #     self.use_user_walet_balance_in_order()
+            
+        # # Save total reward of this order to user's wallet
+        # self.calculate_and_save_total_reward_in_user_wallet()
+
+        # Call the original save method to actually save the data to the database 
+        super().save(*args, **kwargs)
+        
+        
+    class Meta:
+        verbose_name = _("سفارش")
+        verbose_name_plural = _("سفارشات")
+        
+    def __str__(self):
+        return self.tracking_number
+
+    # class Meta:
+        verbose_name = _("سفارش")
+        verbose_name_plural = _("سفارش ها")
+
+class OrderItem(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='order_items',  verbose_name=_('سفارش'))
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name=_('محصول'))
+    quantity = models.PositiveIntegerField(verbose_name=_('تعداد'))
+
+    def _get_discounted_price(self):
+        return self.product.price - ((self.product.price * self.product.price_discount_percent) / 100)
+
+    def get_total(self):
+        return self._get_discounted_price() * self.quantity
+
+    def get_wallet_reward(self):
+        return ((self.product.price * self.product.wallet_discount) / 100) * self.quantity
+    
+    
+    class Meta:
+        verbose_name = _("آیتم سفارش")
+        verbose_name_plural = _("آیتم های سفارش")
+
+    def __str__(self):
+        return f"جزيیات سفارش {self.order}"
+
+class OrderReceipt(Date):
+    authority = models.CharField(max_length=36, null=True, blank=True)
+    request_code = models.IntegerField(default=0, help_text=_('کد اگر ۱۰۰ باشد یعنی موفقیت امیز بود'))
+    verify_code = models.IntegerField(default=0, help_text=_('کد اگر ۱۰۰ یا ۱۰۱ باشد یعنی موفقیت امیز بود'))
+    ref_id = models.BigIntegerField(default=0, verbose_name='شماره تراكنش خرید') 
+    request_msg = models.CharField(max_length=500, null=True, blank=True)
+    error_msg = models.CharField(max_length=500, null=True, blank=True)
+    fee = models.BigIntegerField(default=0)
+    fee_type = models.CharField(max_length=50, null=True, blank=True)
+    card_hash = models.CharField(max_length=500, null=True, blank=True)
+    card_pan = models.CharField(max_length=16, null=True, blank=True)
+    connection_error = models.BooleanField(default=False)
+    order = models.OneToOneField(Order,on_delete=models.PROTECT, related_name='receipt')
+
+    class Meta:
+        verbose_name = _("رسید")
+        verbose_name_plural = _("رسید ها")
+        
+    def __str__(self):
+        return f"{self.authority} {self.request_msg} {self.error_msg}"
+
+
+class OrderProvider(models.Model):
+    name = models.CharField(max_length=100)
+    
+    class Meta:
+        verbose_name = _("درگاه پرداخت")
+        verbose_name_plural = _("درگاه های پرداخت")
+
+    def __str__(self):
+        return self.name
+
+class Banner(models.Model):
+    where = models.CharField(max_length=100)
+    url = models.URLField()
+    title = models.CharField(max_length=100, null=True, blank=True)
+    
+    class Meta:
+        verbose_name = _("بنر")
+        verbose_name_plural = _("بنر ها")
+
+    def __str__(self):
+        return self.title
+    
 class Comment(Date):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='comments',verbose_name="محصول")
     parent = models.ForeignKey('self', blank=True, null=True, on_delete=models.CASCADE, related_name='replies', verbose_name='پاسخ')
-    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='comments', verbose_name='کاربر')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='comments', verbose_name='کاربر')
     text = models.TextField(verbose_name="متن کامنت")
     rating = models.PositiveSmallIntegerField(default=0, verbose_name="امتیاز", help_text="امتیاز باید بین 1 تا 5 باشد")
     buy_suggest = models.BooleanField(default=False, verbose_name=_('پیشنهاد خرید'))
@@ -160,4 +352,5 @@ class Comment(Date):
 
     def get_replies(self):
         return self.replies.all()
-    
+
+

@@ -1,11 +1,10 @@
-from typing import Any
+
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from phonenumber_field.modelfields import PhoneNumberField
 from django.utils.translation import gettext as _ 
 from django.utils import timezone
-import base64
-import uuid 
+
 
 class DateFields(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_('تاریخ ثبت نام'), unique=True)
@@ -60,7 +59,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         
     
     def __str__(self) -> str:
-        return str(self.id)
+        return str(str(self.phone_number))
     
     def has_perm(self, perm, obj=None):
         return True
@@ -84,6 +83,7 @@ class Profile(DateFields):
                             error_messages={"required": 'لطفا کد ملی را وارد کنید'}, unique=True)
     email = models.EmailField(null=True, blank=True, verbose_name=_('ایمیل'))
     # referral_code = models.CharField(max_length=25, verbose_name=_('کد دعوت'), unique=True)
+    wallet_balance = models.DecimalField(max_digits=10, decimal_places=2,default=0, verbose_name=_('کیف پول'))
     user = models.OneToOneField(User, on_delete=models.SET_NULL,related_name='profile',  verbose_name=_('کاربر'), null=True)
     
     class Meta:
@@ -92,18 +92,7 @@ class Profile(DateFields):
         
     def get_full_name(self):
         return f"{self.first_name} {self.last_name}"
-    
-    # def save(self, *args, **kwargs):
-    #     if not self.referral_code:
-    #         while True:
-    #             new_referall_code = base64.urlsafe_b64encode(uuid.uuid4().bytes).decode("utf-8").rstrip()[:25]
-    #             if not User.objects.filter(referral_code=new_referall_code).exists():
-    #                 self.referral_code = new_referall_code
-    #                 break
-                
-    #     super(User, self).save(*args, **kwargs)
-        
-        
+
     
     def __str__(self):
         return self.get_full_name()
@@ -126,3 +115,17 @@ class Address(DateFields):
         else:
             short_address = self.street_address
         return f"{self.city}, {self.state}, {short_address}"
+    
+    
+class DeliveryCost(models.Model):
+    cost = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('هزینه پست'))
+    post_service = models.CharField(max_length=100, null=True, blank=True, verbose_name=_("نام پست"))
+    extra_description = models.TextField(null=True, blank=True, verbose_name=_('توضیحات اضافه'))
+    
+    
+    class Meta:
+        verbose_name = _('سرویس پست')
+        verbose_name_plural =  _("سرویس های پست ")
+        
+    def __str__(self):
+        return f"{self.post_service} {self.cost}"

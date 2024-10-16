@@ -1,5 +1,5 @@
 from django.core.cache import cache
-from rest_framework import generics, permissions, status
+from rest_framework import permissions, status
 from django.contrib.auth.password_validation import validate_password
 from rest_framework.views import APIView
 from account.serializers import (SendOtpSerilizer,
@@ -7,7 +7,7 @@ from account.serializers import (SendOtpSerilizer,
                                  ProfileSerializer,
                                  AddressSerilizer)
 from rest_framework.response import Response
-from account.models import User, Profile, Address
+from account.models import User, Profile, Address, DeliveryCost
 from account.tasks import send_otp_to_phone
 from django.conf import settings
 import random
@@ -36,7 +36,7 @@ class SendOtpCode(APIView):
             return Response({'error': "Please send correct request type"}, status=status.HTTP_400_BAD_REQUEST)
         
         
-        phone_number = str(serializer.validated_data['phone_number'])
+        phone_number = str(serializer.validated_data['phone_number']).replace('+98', '0')
         print(phone_number)
         phone_hash = hashlib.sha256((phone_number).encode()).hexdigest()
         print(phone_hash)
@@ -54,7 +54,7 @@ class SendOtpCode(APIView):
                 return Response({'error': f'OTP request limit reached. Try again after {reminded_time} {"second" if reminded_time == 1 else "seconds"}.'},
                                     status=status.HTTP_429_TOO_MANY_REQUESTS)
     
-        result = send_otp_to_phone.delay(str(phone_number), request_type)
+        result = send_otp_to_phone.delay(phone_number, request_type)
         print('result', result)
         return Response({'token':phone_hash, "message": "Otp send request recieved successfully!", }, status=status.HTTP_200_OK)
 
@@ -173,6 +173,13 @@ class ProfileViewSet(ModelViewSet):
             return Response(serializer.data)
         except Profile.DoesNotExist:
             return Response({"detail": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny],
+            url_path='delivery-cost')
+    def deliver_cost(self, request):
+        deliver_costs = DeliveryCost.objects.values()
+        
+        return Response(deliver_costs, status=status.HTTP_200_OK)    
     
 class AddressViewSet(ModelViewSet):
     http_method_names = ['get', 'put', 'post']
