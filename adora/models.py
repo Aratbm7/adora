@@ -72,7 +72,7 @@ class Brand(Date):
     name = models.CharField(max_length=100, verbose_name=_("نام"))
     image = models.URLField(null=True, blank=True, max_length=500, verbose_name=_("لینک محصول"))
     alt = models.CharField(null=True,blank=True, max_length=500, verbose_name="نام عکس")
-    abbreviation = models.CharField(null=True,blank=True, max_length=10, verbose_name="مخفف")
+    abbreviation = models.CharField(null=True,blank=True, max_length=100, verbose_name="مخفف")
 
     
     class Meta:
@@ -127,6 +127,8 @@ class Product(Date):
     packing_description = models.TextField(null=True, blank=True, verbose_name=_("توضیحات بسته بندی محصول"))
     shopping_description = models.TextField(null=True, blank=True, verbose_name=_("توضیحات خرید محصول"))
     best_seller = models.BooleanField(default=False, verbose_name=_('پر فروش'))
+    
+    # Relationship fields
     material = models.ForeignKey(Matrial, related_name="products", on_delete=models.SET_NULL,  null=True, blank=True, verbose_name="جنس محصول")
     category = models.ForeignKey(Category, related_name="products", on_delete=models.CASCADE, verbose_name="دسته بندی" )
     brand = models.ForeignKey(Brand, null=True, related_name="products", on_delete=models.SET_NULL, verbose_name=_("شرکت سازنده"))
@@ -326,6 +328,7 @@ class OrderProvider(models.Model):
 class Banner(models.Model):
     where = models.CharField(max_length=100)
     url = models.URLField()
+    call_back_url = models.CharField(max_length=500, null=True, blank=True)
     title = models.CharField(max_length=100, null=True, blank=True)
     
     class Meta:
@@ -354,3 +357,48 @@ class Comment(Date):
         return self.replies.all()
 
 
+
+
+class Post(Date):
+    STATUS = (
+    (0,"Draft"),
+    (1,"Publish")
+)
+    title = models.CharField(max_length=200, verbose_name=_("تایتل"))
+    slug = models.SlugField(max_length=200, unique=True)
+    content = models.TextField(verbose_name=_("محتوا"))
+    status = models.IntegerField(choices=STATUS, default=0, verbose_name=_("وضیعت"))
+    authors = models.ManyToManyField(settings.AUTH_USER_MODEL,
+                                related_name='posts',
+                               verbose_name=_("نویسندگان"))
+    related_products = models.ManyToManyField(Product, related_name="posts", blank=True,
+                                             verbose_name=_("محصولات مرتبط"))
+    
+    
+    
+    class Meta:
+        ordering = ['-created_date']
+        verbose_name = _("بلاگ")
+        verbose_name_plural = _("بلاگ ها")
+
+
+
+    def __str__(self):
+        return self.title
+    
+
+class PostImage(Date):
+    alt = models.CharField(null=True,blank=True, max_length=500, verbose_name="نام عکس")
+    image_url = models.URLField(max_length=500, verbose_name=_("لینک عکس"))
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='images', verbose_name=_("پست"))
+
+    class Meta:
+        verbose_name = _("عکس بلاگ")
+        verbose_name_plural = _("عکس ها بلاگ")
+
+
+    def __str__(self):
+        return str(self.image_url)
+    
+
+    

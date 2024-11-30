@@ -96,6 +96,7 @@ class Profile(DateFields):
     
     def __str__(self):
         return self.get_full_name()
+ 
     
 class Address(DateFields):
     profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='addresses', verbose_name=_('پروفایل'))
@@ -129,3 +130,9 @@ class DeliveryCost(models.Model):
         
     def __str__(self):
         return f"{self.post_service} {self.cost}"
+    
+
+
+
+
+

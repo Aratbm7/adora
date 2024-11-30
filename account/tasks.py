@@ -86,4 +86,7 @@ def send_otp_to_phone(phone_number:str, request_type:str):
         # send_otp_to_phone.apply_async((phone_number, request_type), countdown=60)
     except RequestException as re:
         print(f"Request failed: {re}")
-        # send_otp_to_phone.apply_async((phone_number, request_type), countdown=60) 
+        # send_otp_to_phone.apply_async((phone_number, request_type), countdown=60) ,
+        
+        
+        

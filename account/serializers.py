@@ -37,6 +37,7 @@ class VerifyOtpSerializer(serializers.Serializer):
                raise serializers.ValidationError({'password': 'Password is required for this request type.'})
         return super().validate(attrs)
 
+
 class UserSerializer(serializers.ModelSerializer):
     phone_number = PhoneNumberField()
     class Meta:
@@ -44,11 +45,11 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'phone_number']
     
 
-
 class AddressSerializerForProduct(serializers.ModelSerializer):
     class Meta:
         model = Address  # Assuming Address is the model related to Profile
         fields = ['id', 'street_address', 'city', 'state', 'postal_code']  # Adjust fields as needed
+
 
 class ProfileSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField(read_only=True)
@@ -70,12 +71,10 @@ class ProfileSerializer(serializers.ModelSerializer):
 
         return value
             
-        
+            
 class AddressSerilizer(serializers.ModelSerializer):
     profile = serializers.StringRelatedField(read_only=True)
     class Meta:
         model = Address 
         fields = ('id', 'profile', 'street_address','state', 'city', 'postal_code')
-        
-        
-        
+

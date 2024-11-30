@@ -17,5 +17,8 @@ admin.site.register(OrderItem)
 admin.site.register(OrderProvider)
 admin.site.register(Banner)
 admin.site.register(OrderReceipt)
+admin.site.register(Post)
+admin.site.register(PostImage)
+
 
 # Register your models here.

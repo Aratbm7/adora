@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from adora.views import (CategoryViewset,
+from adora.views import (CategoryViewset, PostViewSet,
                          ProductViewset,
                          BrandViewset,
                          CommentViewSet,
@@ -15,6 +15,7 @@ router.register('brands', BrandViewset, basename="brands")
 router.register('cars', CarViewset, basename="cars")
 router.register('comments', CommentViewSet, basename="comments")
 router.register('orders', OrderViewSet, basename="orders")
+router.register('blog', PostViewSet, basename="blogs")
 
 
 urlpatterns = [

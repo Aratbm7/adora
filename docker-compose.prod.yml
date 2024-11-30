@@ -61,17 +61,18 @@ services:
     restart: always
 
   nginx:
-    build: ./nginx
-    # image: adora-nginx
+    # build: ./nginx
+    image: adora-nginx
     volumes:
       - static_volume:/home/app/backend/core/static
       - media_volume:/home/app/backend/media
       - gunicorn_socket:/var/run
       - ./ssl:/etc/nginx/ssl
-      - flower_static:/usr/share/nginx/flower_static # Mount the shared volume here
+      # - flower_static:/usr/share/nginx/flower_static # Mount the shared volume here
     ports:
       - 80:80
       - 443:443
+      - 3000:3000
     depends_on:
       - backend
     restart: always
@@ -112,27 +113,27 @@ services:
   #     - redis
   #     - db
 
-  flower:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
-    # image: adora-backend
-    entrypoint: ./docker-entrypoint-celery-flower.sh
-    volumes:
-      - static_volume:/home/app/backend/core/static
-      - flower_static:/usr/local/lib/python3.11/site-packages/flower/static # Share the volume with Nginx
+  # flower:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.prod
+  #   # image: adora-backend
+  #   entrypoint: ./docker-entrypoint-celery-flower.sh
+  #   volumes:
+  #     - static_volume:/home/app/backend/core/static
+  #     - flower_static:/usr/local/lib/python3.11/site-packages/flower/static # Share the volume with Nginx
 
-    env_file:
-      - ./.env.prod
-    environment:
-      - DJANGO_ENV=production
-      - REDIS_PASSWORD="1234"
-    ports:
-      - 5557:5555
-    depends_on:
-      - redis_master
-      - redis_replica
-      - db
+  #   env_file:
+  #     - ./.env.prod
+  #   environment:
+  #     - DJANGO_ENV=production
+  #     - REDIS_PASSWORD="1234"
+  #   ports:
+  #     - 5557:5555
+  #   depends_on:
+  #     - redis_master
+  #     - redis_replica
+  #     - db
 
 volumes:
   postgres_data:
@@ -140,4 +141,4 @@ volumes:
   static_volume:
   gunicorn_socket:
   redis_master_data:
-  flower_static:
+  # flower_static:

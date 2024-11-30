@@ -1,5 +1,6 @@
+
 from rest_framework import serializers
-from adora.models import (Category,
+from adora.models import (Category, Post, PostImage,
                           Product,
                           ProductImage,
                           Brand,
@@ -14,7 +15,7 @@ from rest_framework.exceptions import ValidationError
 from django.db import transaction, IntegrityError
 from decimal import Decimal
 from adora.tasks import send_payment_information
-
+from django.contrib.auth import get_user_model
 
 class CarSerializer(serializers.ModelSerializer):
     class Meta:
@@ -142,7 +143,16 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ['id','user',  'product', 'parent', 'text', 'rating','buy_suggest', 'created_date', 'updated_date', 'replies']
+        fields = ('id',
+                  'user',
+                  'product',
+                  'parent',
+                  'text',
+                  'rating',
+                  'buy_suggest',
+                  'created_date',
+                  'updated_date',
+                  'replies')
         
 
     def get_replies(self, obj):
@@ -164,16 +174,27 @@ class CommentSerializer(serializers.ModelSerializer):
 
 class ProductSearchSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Product
+        fields = ('id',
+                  'fa_name', 
+                  'images',
+        )
+
+
+class ProductOrderItemSerializer(serializers.ModelSerializer):
+    images = ProductImageSerializer(many=True, read_only=True)
     discounted_price = serializers.SerializerMethodField(read_only=True)
     discounted_wallet = serializers.SerializerMethodField(read_only=True)
     wallet_discount_percent = serializers.CharField(source='wallet_discount')
     # main_category = CategorySerializer(read_only=True, source='category')
     compatible_cars = serializers.SerializerMethodField(read_only=True)
-    brand= BrandSerializer(read_only=True)
+    # brand= BrandSerializer(read_only=True)
 
     class Meta:
         model = Product
-        fields = ['id',
+        fields = ('id',
                 'custom_id',
                   'fa_name', 
                   'en_name', 
@@ -188,9 +209,8 @@ class ProductSearchSerializer(serializers.ModelSerializer):
                   'new',
                   'best_seller',
                   'compatible_cars',
-                  'brand',
                   'images',
-                  ]
+        )
         
     def get_discounted_price(self,obj):
         return obj.price - ((obj.price * obj.price_discount_percent) / 100)
@@ -364,7 +384,6 @@ class ProductListSerializer(serializers.ModelSerializer):
     #     return datam
     
 class OrderItemSerializer(serializers.ModelSerializer):
-    # product = ProductSearchSerializer()
     class Meta:
         model = OrderItem
         fields = ('id','product', 'quantity')
@@ -441,7 +460,7 @@ class OrderSerializer(serializers.ModelSerializer):
                     # Create the order
                 order = Order.objects.create(**validated_data)
                 # Create the order items in bulk
-                order_items = [OrderItem(order=order, **item_data) for item_data in order_items_data]
+                order_items =[OrderItem(order=order, **item_data) for item_data in order_items_data]
                 OrderItem.objects.bulk_create(order_items)
 
                 # Trigger order logic like wallet balance, etc.
@@ -454,7 +473,7 @@ class OrderSerializer(serializers.ModelSerializer):
                     
                 # Save total reward of this order to user's wallet
                 self.calculate_order_reward(order)
-               
+                
                 send_payment_information.delay(order.id)
 
             return order
@@ -475,7 +494,7 @@ class OrderSerializer(serializers.ModelSerializer):
         
         
 class OrderListItemSerializer(serializers.ModelSerializer):
-    product = ProductSearchSerializer()
+    product = ProductOrderItemSerializer()
     class Meta:
         model = OrderItem
         fields = ('id','product', 'quantity')
@@ -515,6 +534,106 @@ class OrderListSerializer(serializers.ModelSerializer):
                 'phone_number': str(obj.user.phone_number),
                 'full_name': f"{obj.user.profile.first_name} {obj.user.profile.last_name}"}
         
+
+class AuthorSerilizer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField(read_only=True)    
+    class Meta:
+        model = get_user_model()
+        fields = ('id', "full_name", 'date_joined')
+
+    def get_full_name(self, obj):
+        if not obj.profile:
+            return "کاربر آدورا یدک"
+        return f"{obj.profile.first_name} {obj.profile.last_name}"
+    
+
+class ProductBlogSerializer(serializers.ModelSerializer):
+    images = ProductImageSerializer(many=True, read_only=True)
+    discounted_price = serializers.SerializerMethodField(read_only=True)
+    discounted_wallet = serializers.SerializerMethodField(read_only=True)
+    wallet_discount_percent = serializers.CharField(source='wallet_discount')
+    # main_category = CategorySerializer(read_only=True, source='category')
+    compatible_cars = serializers.SerializerMethodField(read_only=True)
+    # brand= BrandSerializer(read_only=True)
+
+    class Meta:
+        model = Product
+        fields = ('id',
+                  'fa_name', 
+                  'price',
+                  'price_discount_percent',
+                  'discounted_price',
+                  'wallet_discount_percent',
+                  'discounted_wallet',
+                  'install_location',
+                  'new',
+                  'compatible_cars',
+                  'images',
+        )
+        
+    def get_discounted_price(self,obj):
+        return obj.price - ((obj.price * obj.price_discount_percent) / 100)
+    
+    def get_discounted_wallet(self, obj):
+        return (obj.price * obj.wallet_discount) / 100
+
+    def get_compatible_cars(self, obj):
+        return [{
+                "id": car.id,
+                "fa_name":car.fa_name,
+                 "image_url": car.image,
+                 "image_alt": car.alt} for car in obj.compatible_cars.all()]
+    
+
+class PostImageSerilizer(serializers.ModelSerializer):
+    class Meta:
+        model = PostImage
+        fields = ('id', 'alt', 'image_url')
+class PostSerializer(serializers.ModelSerializer):
+    
+    related_products =ProductBlogSerializer(many=True, read_only=True)
+    authors = AuthorSerilizer(many=True, read_only = True)
+    images = PostImageSerilizer(many=True, read_only=True)
+    
+    class Meta:
+        model=Post
+        fields = ('id',
+                  'title',
+                  'slug',
+                  'authors',
+                  'related_products',
+                  'images',
+                  'content',
+                  'created_date',
+                  'updated_date',
+                  'status')      
+        
+
+
+class PorductTorobSerilizers(serializers.ModelSerializer):
+    product_id = serializers.IntegerField(source='pk', read_only=True)
+    page_url = serializers.SerializerMethodField(read_only=True)
+    price = serializers.SerializerMethodField(read_only=True)
+    old_price = serializers.IntegerField(source="price", read_only=True)
+    availability = serializers.SerializerMethodField(read_only=True)
+    class Meta:
+        model = Product
+        fields = ['product_id', 'page_url', 'old_price', 'availability', 'price']
+        
+    def get_page_url(self,obj:Product) -> str:
+        product_title = obj.fa_name.strip().replace(' ', '-')
+        return f"https://adorayadak.ir/product/adp-{obj.id}/{product_title}"
+    
+    
+    def get_price(self, obj:Product) -> int:
+        discount_percent = int(obj.price_discount_percent)
+        price = obj.price
+        
+        return int(price * (1 - discount_percent / 100))  
         
         
-        
+    def get_availability(self, obj:Product) -> str:
+        count = obj.count
+        if count > 0:
+            return "instock"
+        return "outofstock"
