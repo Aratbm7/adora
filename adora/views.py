@@ -2,6 +2,7 @@ import requests
 from requests.exceptions import ConnectionError
 from adora.models import (Banner, 
                           Category,
+                          Collaborate_Contact,
                           Post,
                           Product,
                           Brand,
@@ -17,7 +18,9 @@ from adora.serializers import (OrderListSerializer, PostSerializer,
                                CategoryWhitChildrenSerializer,
                                OrderSerializer, 
                                ProductSearchSerializer,
-                               PorductTorobSerilizers)
+                               ProductTorobSerilizers,
+                               ProductEmallsSerilizers,
+                               CollaborateAndContactUsSerializer)
 # from rest_framework.generics import ListAPIView
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.viewsets import ModelViewSet
@@ -28,7 +31,7 @@ from rest_framework.response import Response
 from adora.paginations import ProductPagination
 from drf_yasg.utils import swagger_auto_schema
 # from drf_yasg import openapi
-from typing import Optional, Dict
+# from typing import Optional, Dict
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework import status
@@ -36,7 +39,7 @@ from rest_framework.request import Request
 from rest_framework.decorators import action
 from rest_framework import permissions
 from core.permissions import (personal_permissions,
-                              object_level_permissions,
+                            #   object_level_permissions,
                               object_level_permissions_restricted_actions)
 from django.db.models import Prefetch
 from adora.tasks import send_order_status_message
@@ -155,8 +158,18 @@ class ProductViewset(ModelViewSet):
         products = Product.objects.all()
             # .select_related( 'category', 'brand', 'material' )\
             #     .prefetch_related('images','compatible_cars' )
-        serialize = PorductTorobSerilizers(products, many=True)
+        serialize = ProductTorobSerilizers(products, many=True)
         return Response(serialize.data, status=status.HTTP_200_OK)
+ 
+    @action(detail=False, methods=['Get'],
+            url_path="emalls",
+            permission_classes=[permissions.AllowAny])
+    def products_emalls(self,request:Request):
+        products = Product.objects.prefetch_related('images').all()
+            # .select_related( 'category', 'brand', 'material' )\
+            #     .prefetch_related('images','compatible_cars' )
+        serialize = ProductEmallsSerilizers(products, many=True)
+        return Response({'pages_count':1, 'products': serialize.data}  , status=status.HTTP_200_OK)
  
  
 class BrandViewset(ModelViewSet):
@@ -443,4 +456,11 @@ class PostViewSet(ModelViewSet):
     
     permission_classes = [permissions.AllowAny]
     
+    
+class CollaborateAndContactUsViewset(ModelViewSet):
+    http_method_names = ['get', 'post', 'put']
+    queryset = Collaborate_Contact.objects.all()
+    serializer_class = CollaborateAndContactUsSerializer
+    
+
     

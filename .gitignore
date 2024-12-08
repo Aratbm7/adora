@@ -5,7 +5,7 @@ settings.py
 settings1.py
 /static
 /staticfiles/*
-
+*.tar
 *.webp
 *.log
 *.pdf

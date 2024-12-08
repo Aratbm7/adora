@@ -1,6 +1,8 @@
 
+from pyexpat import model
 from rest_framework import serializers
-from adora.models import (Category, Post, PostImage,
+from account.models import User
+from adora.models import (Category, Collaborate_Contact, Post, PostImage,
                           Product,
                           ProductImage,
                           Brand,
@@ -16,6 +18,7 @@ from django.db import transaction, IntegrityError
 from decimal import Decimal
 from adora.tasks import send_payment_information
 from django.contrib.auth import get_user_model
+from phonenumber_field.serializerfields import PhoneNumberField
 
 class CarSerializer(serializers.ModelSerializer):
     class Meta:
@@ -308,6 +311,7 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
     #     except ValidationError as e:
     #         raise serializers.ValidationError("Custom error message for price validation")
 
+
 class ProductListSerializer(serializers.ModelSerializer):
     main_category = CategorySerializer(read_only=True, source='category')
     compatible_cars = serializers.SerializerMethodField(read_only=True)
@@ -383,10 +387,12 @@ class ProductListSerializer(serializers.ModelSerializer):
     #         raise serializers.ValidationError("A product cannot have more than 5 comments")
     #     return datam
     
+    
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = ('id','product', 'quantity')
+    
             
 class OrderSerializer(serializers.ModelSerializer):
     order_items = OrderItemSerializer(many=True)
@@ -491,8 +497,7 @@ class OrderSerializer(serializers.ModelSerializer):
                 'phone_number': str(obj.user.phone_number),
                 'full_name': f"{obj.user.profile.first_name} {obj.user.profile.last_name}"}
         
-        
-        
+          
 class OrderListItemSerializer(serializers.ModelSerializer):
     product = ProductOrderItemSerializer()
     class Meta:
@@ -589,6 +594,8 @@ class PostImageSerilizer(serializers.ModelSerializer):
     class Meta:
         model = PostImage
         fields = ('id', 'alt', 'image_url')
+        
+        
 class PostSerializer(serializers.ModelSerializer):
     
     related_products =ProductBlogSerializer(many=True, read_only=True)
@@ -609,8 +616,15 @@ class PostSerializer(serializers.ModelSerializer):
                   'status')      
         
 
-
-class PorductTorobSerilizers(serializers.ModelSerializer):
+class CollaborateAndContactUsSerializer(serializers.ModelSerializer):
+    phone_number = PhoneNumberField()
+    
+    class Meta:
+        model = Collaborate_Contact
+        fields = '__all__'
+        
+    
+class ProductTorobSerilizers(serializers.ModelSerializer):
     product_id = serializers.IntegerField(source='pk', read_only=True)
     page_url = serializers.SerializerMethodField(read_only=True)
     price = serializers.SerializerMethodField(read_only=True)
@@ -637,3 +651,47 @@ class PorductTorobSerilizers(serializers.ModelSerializer):
         if count > 0:
             return "instock"
         return "outofstock"
+    
+    
+class ProductEmallsSerilizers(serializers.ModelSerializer):
+    title = serializers.CharField(source='fa_name', read_only=True)
+    url = serializers.SerializerMethodField(read_only=True)
+    price = serializers.SerializerMethodField(read_only=True)
+    old_price = serializers.IntegerField(source="price", read_only=True)
+    is_available = serializers.SerializerMethodField(read_only=True)
+    category = serializers.SerializerMethodField(read_only=True)
+    image = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = Product
+        fields = ['id', 'title', 'url', 'old_price', 'is_available', 'price', 'category', 'image']
+        
+    def get_url(self,obj:Product) -> str:
+        product_title = obj.fa_name.strip().replace(' ', '-')
+        return f"https://adorayadak.ir/product/adp-{obj.id}/{product_title}"
+    
+    
+    def get_price(self, obj:Product) -> int:
+        discount_percent = int(obj.price_discount_percent)
+        price = obj.price
+        
+        return int(price * (1 - discount_percent / 100))  
+        
+        
+    def get_is_available(self, obj:Product) -> bool:
+        count = obj.count
+        if count > 0:
+            return True
+        return False
+    
+    def get_category(self, obj:Product) -> str:
+        return obj.category.name
+    
+    
+    def get_image(self, obj:Product) -> str | None:
+        all_images = obj.images.all()
+        if not all_images:
+            return None
+        return str(all_images[0].image_url)
+    
+    

@@ -19,6 +19,7 @@ admin.site.register(Banner)
 admin.site.register(OrderReceipt)
 admin.site.register(Post)
 admin.site.register(PostImage)
+admin.site.register(Collaborate_Contact)
 
 
 # Register your models here.

@@ -5,7 +5,8 @@ from adora.views import (CategoryViewset, PostViewSet,
                          BrandViewset,
                          CommentViewSet,
                          CarViewset,
-                         OrderViewSet)
+                         OrderViewSet, 
+                         CollaborateAndContactUsViewset)
 
 router = DefaultRouter()
 
@@ -16,6 +17,8 @@ router.register('cars', CarViewset, basename="cars")
 router.register('comments', CommentViewSet, basename="comments")
 router.register('orders', OrderViewSet, basename="orders")
 router.register('blog', PostViewSet, basename="blogs")
+router.register('collaborate_contact', CollaborateAndContactUsViewset,
+                basename="collaborate_contact")
 
 
 urlpatterns = [

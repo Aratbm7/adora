@@ -46,17 +46,10 @@ COPY . .
 
 
 
-COPY docker-entrypoint.sh /home/app/backend/
-COPY docker-entrypoint-celery-worker.sh /home/app/backend/
-COPY docker-entrypoint-celery-beat.sh /home/app/backend/
-COPY docker-entrypoint-celery-flower.sh /home/app/backend/
-COPY wait-for-it.sh /home/app/backend/
+COPY --chown=adora_u:adora_g docker-entrypoint* wait-for-it.sh $APP_HOME/  
 
-RUN chmod +x /home/app/backend/docker-entrypoint.sh
-RUN chmod +x /home/app/backend/docker-entrypoint-celery-worker.sh
-RUN chmod +x /home/app/backend/docker-entrypoint-celery-beat.sh
-RUN chmod +x /home/app/backend/docker-entrypoint-celery-flower.sh
-RUN chmod +x /home/app/backend/wait-for-it.sh
+RUN chmod +x $APP_HOME/docker-entrypoint* \
+            $APP_HOME/wait-for-it.sh  
 # Set User
 # USER appuser
 

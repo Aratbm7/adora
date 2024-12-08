@@ -1,4 +1,6 @@
 from importlib.util import module_from_spec
+from pyexpat import model
+from click import Choice
 from django.db import models
 from django.utils.translation import gettext as _ 
 # from django.contrib.auth import get_user_model
@@ -56,6 +58,7 @@ class Category(Date):
             descendants.extend(child.get_descendants())
         return descendants
 
+
 class Car(Date):
     fa_name = models.CharField(max_length=100, verbose_name=_("نام فارسی"))
     image = models.URLField(max_length=500,null=True, blank=True, verbose_name=_("عکس محصول"))
@@ -67,6 +70,7 @@ class Car(Date):
 
     def __str__(self) -> str:
         return self.fa_name
+      
        
 class Brand(Date):
     name = models.CharField(max_length=100, verbose_name=_("نام"))
@@ -82,6 +86,7 @@ class Brand(Date):
     def __str__(self) -> str:
         return self.name
         
+        
 class Matrial(Date):
     material_name = models.CharField(max_length=500, verbose_name=_("دسته بندی جز"))
     
@@ -92,6 +97,7 @@ class Matrial(Date):
         
     def __str__(self) -> str:
         return self.material_name
+   
     
 class ProductImage(Date):
     alt = models.CharField(null=True,blank=True, max_length=500, verbose_name="نام عکس")
@@ -107,6 +113,7 @@ class ProductImage(Date):
             return self.alt
         
         return str(self.id)
+   
        
 class Product(Date):
     custom_id = models.PositiveBigIntegerField(default=0, unique=True, verbose_name=_('شناسه محصول'))
@@ -141,6 +148,7 @@ class Product(Date):
         
     def __str__(self):
         return self.fa_name
+
 
 class Order(Date):
     PENDING_STATUS = 'P'
@@ -271,6 +279,7 @@ class Order(Date):
         verbose_name = _("سفارش")
         verbose_name_plural = _("سفارش ها")
 
+
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='order_items',  verbose_name=_('سفارش'))
     product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name=_('محصول'))
@@ -292,6 +301,7 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"جزيیات سفارش {self.order}"
+
 
 class OrderReceipt(Date):
     authority = models.CharField(max_length=36, null=True, blank=True)
@@ -325,6 +335,7 @@ class OrderProvider(models.Model):
     def __str__(self):
         return self.name
 
+
 class Banner(models.Model):
     where = models.CharField(max_length=100)
     url = models.URLField()
@@ -337,6 +348,7 @@ class Banner(models.Model):
 
     def __str__(self):
         return self.title
+   
     
 class Comment(Date):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='comments',verbose_name="محصول")
@@ -355,8 +367,6 @@ class Comment(Date):
 
     def get_replies(self):
         return self.replies.all()
-
-
 
 
 class Post(Date):
@@ -401,4 +411,24 @@ class PostImage(Date):
         return str(self.image_url)
     
 
+class Collaborate_Contact(Date):
+    COLLABORATE = "collaborate"
+    CONTACT_US = "contact"
+    CHOICE = [(COLLABORATE, 'collaborate'), (CONTACT_US, "contact us")]
+    
+    
+    full_name = models.CharField(max_length=200, verbose_name=_("نام و نام خانوادگی"))
+    phone_number = PhoneNumberField(region="IR", verbose_name=_("شماره تلفن"))
+    request_type = models.CharField(choices=CHOICE, default=COLLABORATE, verbose_name=("نوع درخواست"))
+    address = models.TextField(null=True, verbose_name=_("آدرس"))
+    comment = models.TextField(null=True, verbose_name=_("نظر"))
+    
+    class Meta:
+        verbose_name = _("همکاری و ارتباط با ما")
+        verbose_name_plural = _("درخواست های همکاری و ارتباط با ما")
+
+
+    def __str__(self):
+        return f"{self.full_clean} object type = {self.obj_type}"
+    
     

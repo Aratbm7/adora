@@ -1,107 +1,49 @@
-# # Use the official Python image as a base image
-# FROM python:3.11.4-slim-buster
+# Use the official Python image as a base image  
+FROM python:3.11.4-slim-buster  
 
-# # Environment variables
-# ENV PYTHONDONTWRITEBYTECODE=1
-# ENV PYTHONUNBUFFERED=1
-# ENV DJANGO_ENV=production
-# ENV HOME=/home/app
-# ENV APP_HOME=/home/app/backend
+# Environment variables  
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DJANGO_ENV=production \
+    HOME=/home/app \
+    APP_HOME=/home/app/backend  
 
-# # Install necessary packages and clean up
-# RUN apt-get update && \
-#     apt-get install -y --no-install-recommends gcc && \
-#     apt-get install -y iputils-ping && \
-#     apt-get clean && \
-#     rm -rf /var/lib/apt/lists/*
-
-# # Create a system group and user
-# RUN addgroup --system adora_g && adduser --system --ingroup adora_g adora_u
-# # Create necessary directories
-# RUN mkdir -p $HOME $APP_HOME $APP_HOME/media $APP_HOME/core/static
-
-# # Set working directory
-# WORKDIR $APP_HOME
-
-# # Copy requirements and install dependencies
-# COPY requirements.txt .
-# RUN pip install --upgrade pip && \
-#     pip install -r requirements.txt
-
-# # Copy application code
-# COPY . .
-
-# # Copy entrypoint scripts and set permissions
-# COPY ./docker-entrypoint.prod.sh /home/app/backend/docker-entrypoint.prod.sh
-# COPY ./wait-for-it.sh /home/app/backend/wait-for-it.sh
-# RUN chmod +x /home/app/backend/docker-entrypoint.prod.sh
-# RUN chmod +x /home/app/backend/docker-entrypoint-celery-worker.sh
-# RUN chmod +x /home/app/backend/docker-entrypoint-celery-beat.sh
-# RUN chmod +x /home/app/backend/docker-entrypoint-celery-flower.sh
-# RUN chmod +x /home/app/backend/wait-for-it.sh
-
-# # # Expose the port
-# # EXPOSE 8000
-
-# # Change ownership of the application directory
-# RUN chown -R adora_u:adora_g /var/run/
-# RUN chown -R adora_u:adora_g $APP_HOME
-
-# # Switch to the app user
-# USER adora_u
-
-# # Define the entrypoint
-# # ENTRYPOINT [ "./docker-entrypoint.prod.sh" ]
-
-# Use the official Python image as a base image
-FROM python:3.11.4-slim-buster
-
-# Environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV DJANGO_ENV=production
-ENV HOME=/home/app
-ENV APP_HOME=/home/app/backend
-
-# Install necessary packages and clean up
+# Install necessary packages and clean up in one layer  
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc iputils-ping && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*  
 
-# Create a system group and user
-RUN addgroup --system adora_g && adduser --system --ingroup adora_g adora_u
+# Create a system group and user  
+RUN addgroup --system adora_g && \
+    adduser --system --ingroup adora_g adora_u  
 
-# Create necessary directories
-RUN mkdir -p $HOME $APP_HOME $APP_HOME/media $APP_HOME/core/static
+# Create necessary directories  
+RUN mkdir -p $HOME $APP_HOME $APP_HOME/media $APP_HOME/core/static  
 
-# Set working directory
-WORKDIR $APP_HOME
+# Set working directory  
+WORKDIR $APP_HOME  
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+# Copy only requirements first to take advantage of Docker cache  
+COPY requirements.txt .  
 
-# Use .dockerignore to exclude unnecessary files from the build context
-# COPY .dockerignore $APP_HOME/.dockerignore
+# Install dependencies  
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt  
 
-# Copy application code with ownership change
-COPY --chown=adora_u:adora_g . .
+# Copy application code with ownership change  
+COPY --chown=adora_u:adora_g . .  
 
-# Copy entrypoint scripts and set permissions
-COPY --chown=adora_u:adora_g docker-entrypoint.prod.sh docker-entrypoint-celery-worker.sh docker-entrypoint-celery-beat.sh docker-entrypoint-celery-flower.sh wait-for-it.sh $APP_HOME/
-RUN chmod +x $APP_HOME/docker-entrypoint.prod.sh \
-            $APP_HOME/docker-entrypoint-celery-worker.sh \
-            $APP_HOME/docker-entrypoint-celery-beat.sh \
-            $APP_HOME/docker-entrypoint-celery-flower.sh \
-            $APP_HOME/wait-for-it.sh
+# Copy entrypoint scripts and set permissions in one command  
+COPY --chown=adora_u:adora_g docker-entrypoint* wait-for-it.sh $APP_HOME/  
+RUN chmod +x $APP_HOME/docker-entrypoint* \
+            $APP_HOME/wait-for-it.sh  
 
-# Change ownership of the run directory
-RUN chown -R adora_u:adora_g /var/run/
+# Change ownership of the run directory  
+RUN chown -R adora_u:adora_g /var/run/  
 
-# Switch to the app user
-USER adora_u
+# Switch to the app user  
+USER adora_u  
 
-# Define the entrypoint
-ENTRYPOINT [ "./docker-entrypoint.prod.sh" ]
+# Define the entrypoint  
+ENTRYPOINT ["./docker-entrypoint.prod.sh"]
