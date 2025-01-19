@@ -425,6 +425,7 @@ class OrderSerializer(serializers.ModelSerializer):
                   'receiver_choose',
                   'user',
                   'order_items',
+                  'delivery_tracking_number',
                   'created_date',
                   'updated_date',)
         
@@ -480,7 +481,7 @@ class OrderSerializer(serializers.ModelSerializer):
                 # Save total reward of this order to user's wallet
                 self.calculate_order_reward(order)
                 
-                send_payment_information.delay(order.id)
+                send_payment_information(order.id)
 
             return order
 

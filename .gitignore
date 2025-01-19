@@ -22,6 +22,10 @@ secretkey.txt
 # Only for MultipleChoiceQuestionGame
 /scripts
 /question_directories1
+/core/static/
+/core/staticfiles/
+/admin/
+/rest_framework/
 
 # C extensions
 *.so

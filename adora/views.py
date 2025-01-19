@@ -9,7 +9,8 @@ from adora.models import (Banner,
                           Comment,
                           Car,
                           Order)
-from adora.serializers import (OrderListSerializer, PostSerializer,
+from adora.serializers import (OrderListSerializer,
+                               PostSerializer,
                                ProductRetrieveSerializer,
                                ProductListSerializer,
                                BrandSerializer,
@@ -47,6 +48,8 @@ from fuzzywuzzy import fuzz
 from rest_framework.exceptions import ValidationError
 import os
 import json
+import traceback
+import time
 
 
 class CategoryViewset(ModelViewSet):
@@ -244,7 +247,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({"error": "An unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         
-
+ 
     def get_queryset(self):
         if self.request.user.is_authenticated:
             if self.action == 'list':
@@ -279,9 +282,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("You do not have permission to delete this comment.")
         
 
-
     @action(detail=False, methods=['get'], url_path='payment-request-info', 
-            permission_classes=[permissions.IsAuthenticated ])
+            permission_classes=[permissions.IsAuthenticated])
     def payment_status(self, request:Request):
         try:
             tracking_number = request.query_params.get('tracking_number')
@@ -295,15 +297,22 @@ class OrderViewSet(viewsets.ModelViewSet):
             if not order:
                 return Response({'message': f'There is no Order with this tracking number {tracking_number}.'},
                                 status=status.HTTP_404_NOT_FOUND) 
-            
-            order_receipt = order.receipt
-            
-            if not order_receipt:
-                return Response({
-                'message': 'Order receipt not created yet, please try again later!'},
-                                status=status.HTTP_202_ACCEPTED)
+            max_attempts = 5  
+            for attempt in range(max_attempts):  
+                if hasattr(order, 'receipt'):  
+                    order_receipt = order.receipt  
+                    break  # Exit the loop if receipt exists  
+                else:  
+                    if attempt < max_attempts - 1:  # Avoid sleep after the last attempt  
+                        time.sleep(5)  # Wait for 5 seconds before retrying  
+
+            # Check if a receipt was found after the retries  
+            if not hasattr(order, 'receipt'):  
+                return Response({  
+                    'message': 'Order receipt not created after multiple attempts, please try again later!'},  
+                    status=status.HTTP_202_ACCEPTED) 
                 
-            request_code = order_receipt.request_code
+            request_code = order.receipt.request_code
             if  request_code == 100:
                 return Response({'payment_url': f"{os.environ.get('ZARIN_START_PAY_URL')}/{order_receipt.authority}",
                                 'message': order_receipt.request_msg,
@@ -315,7 +324,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                     'message': order_receipt.error_msg,
                     'code': request_code
                 }, status=status.HTTP_402_PAYMENT_REQUIRED)
-        except Exception :
+        except Exception as e:
+            error_message = str(traceback.format_exc())
+            print(error_message)
             return Response({'message': f'An unexpected error!!'}, status=status.HTTP_400_BAD_REQUEST)        
 
     @action(detail=False, methods=['get'], url_path='payment-verified',  
@@ -463,4 +474,3 @@ class CollaborateAndContactUsViewset(ModelViewSet):
     serializer_class = CollaborateAndContactUsSerializer
     
 
-    
