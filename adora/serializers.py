@@ -1,30 +1,24 @@
-
-from pyexpat import model
-from rest_framework import serializers
-from account.models import User
-from adora.models import (Category, Collaborate_Contact, Post, PostImage,
-                          Product,
-                          ProductImage,
-                          Brand,
-                          Comment,
-                          Matrial,
-                          Car,
-                          Order,
-                          OrderItem,)
-
-from django.core.exceptions import ObjectDoesNotExist
-from rest_framework.exceptions import ValidationError
-from django.db import transaction, IntegrityError
 from decimal import Decimal
-from adora.tasks import send_payment_information
+
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import IntegrityError, transaction
 from phonenumber_field.serializerfields import PhoneNumberField
+from rest_framework.exceptions import ValidationError
+
+from account.models import User
+from adora.models import (Brand, Car, Category, Collaborate_Contact, Comment,
+                          Matrial, Order, OrderItem, Post, PostImage, Product,
+                          ProductImage)
+from adora.tasks import send_payment_information
+from rest_framework import serializers
+
 
 class CarSerializer(serializers.ModelSerializer):
     class Meta:
         model = Car
         exclude = ('created_date', 'updated_date')
-  
+
 # class CategorySeriali
 
 
@@ -33,7 +27,7 @@ class ProductImageSerializer(serializers.ModelSerializer):
         model = ProductImage
         # fields = ('id', 'alt', 'image_url', 'product')
         exclude = ('created_date', 'updated_date')
-        
+
 class CategoryWhitChildrenSerializer(serializers.ModelSerializer):
     parent = serializers.SerializerMethodField()
     children = serializers.SerializerMethodField()
@@ -53,7 +47,7 @@ class CategoryWhitChildrenSerializer(serializers.ModelSerializer):
         children = obj.children.all()
         return CategoryWhitChildrenSerializer(children, many=True).data
 
-        
+
 class CategorySerializer(serializers.ModelSerializer):
     parent = serializers.SerializerMethodField()
 
@@ -68,9 +62,8 @@ class CategorySerializer(serializers.ModelSerializer):
             # return CategorySerializer(obj.parent).data
             return obj.parent.name
         return None
-    
-        
-        
+
+
 class SimilarProductsSerializer(serializers.ModelSerializer):
     # category = serializers.SerializerMethodField(read_only=True)
     # material = serializers.SerializerMethodField(read_only=True)
@@ -124,8 +117,8 @@ class SimilarProductsSerializer(serializers.ModelSerializer):
     
     def get_discounted_wallet(self, obj):
         return (obj.price * obj.wallet_discount) / 100
-    
-    
+
+
 class MaterialSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='material_name')
     class Meta:
@@ -138,8 +131,8 @@ class BrandSerializer(serializers.ModelSerializer):
         model = Brand
         # fields = '__all__'
         exclude = ['created_date', 'updated_date', 'alt']
- 
-     
+
+
 class CommentSerializer(serializers.ModelSerializer):
     replies = serializers.SerializerMethodField()
     user = serializers.SerializerMethodField(read_only=True)  # Marking user as read-only with custom logic
@@ -227,7 +220,7 @@ class ProductOrderItemSerializer(serializers.ModelSerializer):
                 "fa_name":car.fa_name,
                  "image_url": car.image,
                  "image_alt": car.alt} for car in obj.compatible_cars.all()]
-    
+
 
 class ProductRetrieveSerializer(serializers.ModelSerializer):
     # main_category = serializers.CharField(source='category.fa_name', read_only=True)
@@ -386,14 +379,14 @@ class ProductListSerializer(serializers.ModelSerializer):
     #     if product and Comment.objects.filter(product=product).count() >= 5:
     #         raise serializers.ValidationError("A product cannot have more than 5 comments")
     #     return datam
-    
-    
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = ('id','product', 'quantity')
-    
-            
+
+
 class OrderSerializer(serializers.ModelSerializer):
     order_items = OrderItemSerializer(many=True)
     amount_used_wallet_balance = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, read_only=True)
@@ -403,32 +396,38 @@ class OrderSerializer(serializers.ModelSerializer):
     payment_status = serializers.CharField(read_only=True)
     delivery_status = serializers.CharField(read_only=True)
     user = serializers.PrimaryKeyRelatedField(read_only=True)
-    
+
     class Meta:
         model = Order
-        fields = ('id',
-                  'tracking_number', 
-                  'payment_status',
-                  'payment_method',
-                  'payment_reference',
-                  'delivery_status',
-                  'delivery_date',
-                  'delivery_address',
-                  'delivery_cost',
-                  'total_price',
-                  'use_wallet_balance',
-                  'amount_used_wallet_balance',
-                  'order_reward', 
-                  'extra_describtion',
-                  'receiver_phone_number',
-                  'receiver_full_name',
-                  'receiver_choose',
-                  'user',
-                  'order_items',
-                  'delivery_tracking_number',
-                  'created_date',
-                  'updated_date',)
-        
+        fields = (
+            "id",
+            "tracking_number",
+            "payment_status",
+            "payment_method",
+            "payment_reference",
+            "delivery_status",
+            "delivery_date",
+            "delivery_address",
+            "delivery_cost",
+            "total_price",
+            "use_wallet_balance",
+            "amount_used_wallet_balance",
+            "order_reward",
+            "extra_describtion",
+            "receiver_phone_number",
+            "receiver_full_name",
+            "receiver_choose",
+            "user",
+            "order_items",
+            "delivery_tracking_url",
+           "deliver_post_name", 
+            "created_date",
+            "updated_date",
+            "returned_status",
+            "returned_rejected_reason",
+           "returned_asked_reason",
+        )
+
     def calculate_total_price(self, order):
         total = sum([item.get_total() for item in order.order_items.all()])
         order.total_price = total + order.delivery_cost
@@ -442,11 +441,10 @@ class OrderSerializer(serializers.ModelSerializer):
         total_reward = sum([item.get_wallet_reward() for item in order.order_items.all()])
         order.order_reward = total_reward
         order.save()
-        
-       
+
     def _get_wallet_balance(sel, order) -> Decimal:
         return order.user.profile.wallet_balance
-        
+
     def use_user_walet_balance_in_order(self, order):
         """This method use mines wallet balance from total price 
         """    
@@ -456,15 +454,13 @@ class OrderSerializer(serializers.ModelSerializer):
         order.total_price -= wallet_balance
         order.save()
 
-
     def create(self, validated_data):
         order_items_data = validated_data.pop('order_items')
-        
- 
+
         try:
             # Wrap everything in a transaction to ensure atomicity
             with transaction.atomic():
-                    # Create the order
+                # Create the order
                 order = Order.objects.create(**validated_data)
                 # Create the order items in bulk
                 order_items =[OrderItem(order=order, **item_data) for item_data in order_items_data]
@@ -472,15 +468,15 @@ class OrderSerializer(serializers.ModelSerializer):
 
                 # Trigger order logic like wallet balance, etc.
                 self.calculate_total_price(order)
-            
+
                 # Save total reward to user's wallet
                 if order.use_wallet_balance:
                     print(' order.use_wallet_balance',  order.use_wallet_balance)
                     self.use_user_walet_balance_in_order(order)
-                    
+
                 # Save total reward of this order to user's wallet
                 self.calculate_order_reward(order)
-                
+
                 send_payment_information(order.id)
 
             return order
@@ -492,19 +488,19 @@ class OrderSerializer(serializers.ModelSerializer):
         except Exception as e:
             # Catch any other exceptions and return an appropriate error message
             raise ValidationError({"detail": f"An error occurred: {str(e)}"})
-        
+
     def get_user(self, obj):      
         return {'id': obj.user.id,
                 'phone_number': str(obj.user.phone_number),
                 'full_name': f"{obj.user.profile.first_name} {obj.user.profile.last_name}"}
-        
-          
+
+
 class OrderListItemSerializer(serializers.ModelSerializer):
     product = ProductOrderItemSerializer()
     class Meta:
         model = OrderItem
         fields = ('id','product', 'quantity')
-            
+
 
 class OrderListSerializer(serializers.ModelSerializer):
     order_items = OrderListItemSerializer(many=True)
@@ -519,6 +515,7 @@ class OrderListSerializer(serializers.ModelSerializer):
                   'delivery_status',
                   'delivery_date',
                   'delivery_address',
+                  "deliver_post_name", 
                   'delivery_cost',
                   'total_price',
                   'use_wallet_balance',
@@ -531,7 +528,12 @@ class OrderListSerializer(serializers.ModelSerializer):
                   'user',
                   'order_items',
                   'created_date',
-                  'updated_date',)
+                  'updated_date',
+                "returned_status",
+                "returned_rejected_reason",
+                "returned_asked_reason",
+                  )
+
         
 
 
@@ -539,7 +541,7 @@ class OrderListSerializer(serializers.ModelSerializer):
         return {'id': obj.user.id,
                 'phone_number': str(obj.user.phone_number),
                 'full_name': f"{obj.user.profile.first_name} {obj.user.profile.last_name}"}
-        
+
 
 class AuthorSerilizer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField(read_only=True)    
@@ -551,7 +553,7 @@ class AuthorSerilizer(serializers.ModelSerializer):
         if not obj.profile:
             return "کاربر آدورا یدک"
         return f"{obj.profile.first_name} {obj.profile.last_name}"
-    
+
 
 class ProductBlogSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
@@ -589,14 +591,14 @@ class ProductBlogSerializer(serializers.ModelSerializer):
                 "fa_name":car.fa_name,
                  "image_url": car.image,
                  "image_alt": car.alt} for car in obj.compatible_cars.all()]
-    
+
 
 class PostImageSerilizer(serializers.ModelSerializer):
     class Meta:
         model = PostImage
         fields = ('id', 'alt', 'image_url')
-        
-        
+
+
 class PostSerializer(serializers.ModelSerializer):
     
     related_products =ProductBlogSerializer(many=True, read_only=True)
@@ -615,7 +617,7 @@ class PostSerializer(serializers.ModelSerializer):
                   'created_date',
                   'updated_date',
                   'status')      
-        
+
 
 class CollaborateAndContactUsSerializer(serializers.ModelSerializer):
     phone_number = PhoneNumberField()
@@ -623,8 +625,8 @@ class CollaborateAndContactUsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Collaborate_Contact
         fields = '__all__'
-        
-    
+
+
 class ProductTorobSerilizers(serializers.ModelSerializer):
     product_id = serializers.IntegerField(source='pk', read_only=True)
     page_url = serializers.SerializerMethodField(read_only=True)
@@ -652,8 +654,8 @@ class ProductTorobSerilizers(serializers.ModelSerializer):
         if count > 0:
             return "instock"
         return "outofstock"
-    
-    
+
+
 class ProductEmallsSerilizers(serializers.ModelSerializer):
     title = serializers.CharField(source='fa_name', read_only=True)
     url = serializers.SerializerMethodField(read_only=True)
@@ -694,5 +696,11 @@ class ProductEmallsSerilizers(serializers.ModelSerializer):
         if not all_images:
             return None
         return str(all_images[0].image_url)
+
+
+class OrderRejectedReasonSerializer(serializers.ModelSerializer):
     
+    class Meta:
+        model= Order
+        fields = ['returned_rejected_reason']
     

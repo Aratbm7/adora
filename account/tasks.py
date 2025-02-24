@@ -16,35 +16,6 @@ import random
 MELLIPAYAMK_PATTER_URL=os.environ.get("MELLIPAYAMK_PATTER_URL")
 REGISTER_LOGIN_CODE = os.environ.get('REGISTER_LOGIN_CODE')
 
-# ResponseType = Optional[Response]
-# def retry_request(url: str, headers:Optional[Dict]= None,
-#                   data:Optional[Dict]=None,
-#                   max_retries:int=3,
-#                   retry_delay:int=1,
-#                   method:str='get' ) -> ResponseType:
-#     for i in range(max_retries):
-#         try:
-#             if method == 'get':
-#                 response = requests.get(url, headers=headers)
-
-#             if method == 'post':
-#                 response = requests.post(url, headers=headers, data=json.dumps(data))
-#             # response.raise_for_status()
-#             print('res', response)
-#             print("Connection successful")
-#             return response
-#         except ConnectionError as ce:
-#             error_message = f"Connection error on attempt {i+1}: {ce}"
-#             # save_error_to_log(url, error_message)
-#             print(url, error_message)
-#             if i < max_retries - 1:
-#                 print("Retrying...")
-#                 time.sleep(retry_delay)
-#         except RequestException as re:
-#             error_message = f"Other request error: {re}"
-#             print(url, error_message)
-#             return None
-#     return None
 HEADERS = {
     'accept': 'application/json',
     'content-type': 'application/json'
@@ -87,6 +58,4 @@ def send_otp_to_phone(phone_number:str, request_type:str):
     except RequestException as re:
         print(f"Request failed: {re}")
         # send_otp_to_phone.apply_async((phone_number, request_type), countdown=60) ,
-        
-        
         

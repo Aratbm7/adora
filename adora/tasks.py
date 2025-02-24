@@ -1,6 +1,6 @@
-from email.header import Header
+from typing import List
+from account.models import User
 from celery import shared_task
-from django.utils import timezone
 from adora.models import Order, OrderReceipt
 import requests
 from requests.exceptions import ConnectionError
@@ -66,12 +66,12 @@ def send_payment_information(order_id):
 
 MELLIPAYAMK_PATTER_URL=os.environ.get("MELLIPAYAMK_PATTER_URL")
 @shared_task
-def send_order_status_message(phone_number, message, text_code):
+def send_order_status_message(phone_number, msg_args:List, text_code:int):
     try:
         data ={ 
-            "bodyId": text_code, 
-            "to": phone_number, 
-            "args": message
+            "bodyId": int(text_code), 
+            "to": phone_number,
+            "args":msg_args 
             }
         res = requests.post(MELLIPAYAMK_PATTER_URL, data=json.dumps(data), headers=HEADERS) 
         

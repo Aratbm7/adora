@@ -1,17 +1,13 @@
 import random
 import string
-from ast import mod
-from decimal import Decimal
 from importlib.util import module_from_spec
 
-from click import Choice
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext as _
 
 # from django.contrib.auth import get_user_model
 from phonenumber_field.modelfields import PhoneNumberField
-from pyexpat import model
 
 
 # Create your models here.
@@ -218,6 +214,7 @@ class Product(Date):
 
 
 class Order(Date):
+    NO_ANY_ACTION = "N"
     PENDING_STATUS = "P"
     PAYMENT_STATUS_COMPLETE = "C"
     PAYMENT_STATUS_FAILED = "F"
@@ -240,6 +237,7 @@ class Order(Date):
     DELIVERY_STATUS_NOT_ACCEPTED_RETURN = "REJECT_RETURNED"
 
     DELIVERY_STATUS_CHOICES = [
+        (NO_ANY_ACTION, _("انتخاب")),
         (PENDING_STATUS, _("در حال بسته بندی و پردازش")),
         (DELIVERY_STATUS_SHIPPED, _("تحویل پست داده شد")),
         (DELIVERY_STATUS_DELIVERED, _("تحویل مشتری داده شد")),
@@ -284,6 +282,8 @@ class Order(Date):
     delivery_date = models.CharField(
         max_length=150, null=True, blank=True, verbose_name=_("تاریخ تحویل")
     )
+    deliver_post_name = models.CharField(max_length=500, null=True, blank=True, verbose_name=_("نام پست"),
+                                         help_text=_("این فیلد در پیامک ارسال میشود."))
     delivery_tracking_url = models.CharField(
         max_length=700,
         null=True,
@@ -336,26 +336,26 @@ class Order(Date):
         verbose_name=_("انتخاب گیرنده"),
     )
 
-    RETURNED_DOESENT_ASKED = "RDA"
     RETURNED_ASK = "RA"
     RETURNED_CONFIRMED = "RC"
     RETURNED_REJECTED = "RR"
     RETURNED_STATUS_CHOICE = [
-        (RETURNED_DOESENT_ASKED, "درخواست مرجوعی نشده"),
+        (NO_ANY_ACTION, _("انتخاب")),
         (RETURNED_ASK, "درخواست مرجوعی"),
         (RETURNED_CONFIRMED, ("تایید درخواست مرجوعی")),
         (RETURNED_REJECTED, ("رد درخواست مرجوعی")),
     ]
     returned_status = models.CharField(
         choices=RETURNED_STATUS_CHOICE,
-        default=RETURNED_DOESENT_ASKED,
+        default=NO_ANY_ACTION,
         verbose_name=_("وضعیت درخواست مرجوعی"),
         help_text=_(
             "اگر وضعیت رد درخواست مرجوعی را انتخاب میکنید لطفا قبلا از ذخیره کردن دلیل رد کردن را هم در فیلد خودش بنویسید"
         ),
     )
+    returned_asked_reason = models.TextField(null=True,blank=True, verbose_name=_("دلیل درخواست مرجوعی"))
     returned_rejected_reason = models.CharField(
-        max_length=200,
+        max_length=500,
         null=True,
         blank=True,
         verbose_name=_("دلیل رد درخواست"),
@@ -481,6 +481,7 @@ class OrderProvider(models.Model):
 
     def __str__(self):
         return self.name
+
 
 
 class Banner(models.Model):
