@@ -658,7 +658,7 @@ class PostViewSet(ModelViewSet):
 
     permission_classes = [permissions.AllowAny]
 
-
+    
 class CollaborateAndContactUsViewset(ModelViewSet):
     http_method_names = ["get", "post", "put"]
     queryset = Collaborate_Contact.objects.all()

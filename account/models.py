@@ -59,7 +59,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         
     
     def __str__(self) -> str:
-        return str(str(self.phone_number))
+        return str(self.phone_number).replace('+98', '0')
     
     def has_perm(self, perm, obj=None):
         return True

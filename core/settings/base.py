@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import os
 from dotenv import load_dotenv
@@ -24,27 +23,33 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'corsheaders', 
-    'rest_framework',
-    'rest_framework_simplejwt',
-    'rest_framework_simplejwt.token_blacklist',
-    'drf_yasg',
-    'django_filters',
-    'account.apps.AccountConfig',
-    'adora',
+    # 'django_daisy',
+    "admin_interface",
+    "colorfield",
+    # 'django_daisy',
+    "admin_auto_filters",
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "jalali_date",
+    "corsheaders",
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
+    "drf_yasg",
+    "django_filters",
+    "account.apps.AccountConfig",
+    "adora",
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
-
+    "django.middleware.locale.LocaleMiddleware",
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -126,8 +131,15 @@ USE_I18N = True
 
 USE_TZ = True
 
-LANGUAGE_CODE = 'fa'
-
+LANGUAGES = (
+    ("fa", "فارسی"),
+    ('tr', ('Turkce')),
+    ("en", ("English")),
+    ("it", ("Italiano")),
+    ("fr", ("Français")),
+    # more than one language is expected here
+)
+LANGUAGE_CODE = "fa"
 TIME_ZONE = 'Iran'
 PHONENUMBER_DEFAULT_REGION = "IR"
 
@@ -165,7 +177,16 @@ CACHES = {
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         }
-    }
+    },
+    "admin_interface": {  # کش مخصوص admin_interface
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://:1234@redis_master:6379/2",  # جدا کردن فضای کش برای admin_interface
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+        "TIMEOUT": None,  # کش ادمین همیشه معتبر باشد
+    },
+
 }
 
 MEDIA_URL = "/media/"
@@ -203,3 +224,14 @@ SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"  # Points to the master Redis
 
 CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins (use with caution)
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+SILENCED_SYSTEM_CHECKS = ["security.W019"]
+
+
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"  # استفاده از کش برای سشن‌ها
+SESSION_CACHE_ALIAS = "default"  # مشخص کردن کش پیش‌فرض برای ذخیره سشن‌ها
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 30  # سشن برای 30 روز معتبر بماند
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # بستن مرورگر باعث خروج از سیستم نشود
+SESSION_COOKIE_SECURE = False  # اگر SSL ندارید، باید False باشد
+SESSION_COOKIE_HTTPONLY = True
+SESSION_SAVE_EVERY_REQUEST = True  # هر درخواس

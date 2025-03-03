@@ -13,10 +13,10 @@ from .base import *
 
 
 # DEBUG =  bool(int(os.environ.get("DEBUG", default=0)))
-DEBUG = True
+DEBUG = False
 ROOT_URLCONF = 'core.urls.urls_prod'
 
-
+LANGUAGE_CODE = 'fa'
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),

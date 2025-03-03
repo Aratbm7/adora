@@ -25,7 +25,7 @@ class Date(models.Model):
 
 class Category(Date):
     name = models.CharField(max_length=500, verbose_name="نام")
-    image = models.URLField(max_length=500, verbose_name=_("لینک محصول"))
+    image = models.URLField(max_length=500, verbose_name=_("لینک عکس دسته بندی"))
     alt = models.CharField(
         null=True, blank=True, max_length=500, verbose_name="نام عکس"
     )
@@ -66,7 +66,7 @@ class Category(Date):
 class Car(Date):
     fa_name = models.CharField(max_length=100, verbose_name=_("نام فارسی"))
     image = models.URLField(
-        max_length=500, null=True, blank=True, verbose_name=_("عکس محصول")
+        max_length=500, null=True, blank=True, verbose_name=_("عکس ماشین")
     )
     alt = models.CharField(
         null=True, blank=True, max_length=500, verbose_name="نام عکس"
@@ -83,7 +83,7 @@ class Car(Date):
 class Brand(Date):
     name = models.CharField(max_length=100, verbose_name=_("نام"))
     image = models.URLField(
-        null=True, blank=True, max_length=500, verbose_name=_("لینک محصول")
+        null=True, blank=True, max_length=500, verbose_name=_("لینک عکس برند")
     )
     alt = models.CharField(
         null=True, blank=True, max_length=500, verbose_name="نام عکس"
@@ -134,6 +134,19 @@ class ProductImage(Date):
         return str(self.id)
 
 
+class FAQ(models.Model):
+    question = models.CharField(max_length=1000, verbose_name="سوال")
+    answer = models.TextField(verbose_name="پاسخ")
+    is_global = models.BooleanField(default=False, verbose_name="مشترک بین همه محصولات")
+
+    def __str__(self):
+        return f"{self.question[:20]} ..."
+    
+    class Meta:
+        verbose_name = _("پرسش محصولات")
+        verbose_name_plural = _("پرسش های محصولات")
+
+
 class Product(Date):
     custom_id = models.PositiveBigIntegerField(
         default=0, unique=True, verbose_name=_("شناسه محصول")
@@ -176,6 +189,7 @@ class Product(Date):
     )
     best_seller = models.BooleanField(default=False, verbose_name=_("پر فروش"))
 
+    faqs = models.JSONField()
     # Relationship fields
     material = models.ForeignKey(
         Matrial,
@@ -204,6 +218,17 @@ class Product(Date):
     compatible_cars = models.ManyToManyField(
         Car, blank=True, related_name="products", verbose_name=_("مناسب خودرو های")
     )
+    
+    faqs = models.ManyToManyField(FAQ, blank=True, verbose_name="سوالات متداول اختصاصی")
+
+
+    def get_all_faqs(self):
+        """
+        دریافت تمام سوالات (هم سوالات اختصاصی این محصول و هم سوالات عمومی)
+        """
+        global_faqs = FAQ.objects.filter(is_global=True)
+        product_faqs = self.faqs.all()
+        return global_faqs | product_faqs  # ترکیب سوالات اختصاصی و عمومی
 
     class Meta:
         verbose_name = _("محصول")
@@ -220,9 +245,9 @@ class Order(Date):
     PAYMENT_STATUS_FAILED = "F"
 
     PAYMENT_STATUS_CHOICES = [
-        (PENDING_STATUS, "Pending"),
-        (PAYMENT_STATUS_COMPLETE, "Compelete"),
-        (PAYMENT_STATUS_FAILED, "Failed"),
+        (PENDING_STATUS, _("در انتظار")),
+        (PAYMENT_STATUS_COMPLETE, "موفق"),
+        (PAYMENT_STATUS_FAILED, "نا موفق"),
     ]
 
     payment_status = models.CharField(
@@ -239,15 +264,15 @@ class Order(Date):
     DELIVERY_STATUS_CHOICES = [
         (NO_ANY_ACTION, _("انتخاب")),
         (PENDING_STATUS, _("در حال بسته بندی و پردازش")),
-        (DELIVERY_STATUS_SHIPPED, _("تحویل پست داده شد")),
-        (DELIVERY_STATUS_DELIVERED, _("تحویل مشتری داده شد")),
+        (DELIVERY_STATUS_SHIPPED, _("تحویل پست")),
+        (DELIVERY_STATUS_DELIVERED, _("تحویل مشتری")),
     ]
 
     PAYMENT_METHOD_ONLINE = "O"
     PAYMENT_METHOD_CASH = "C"
     PAYMENT_METHOD_CHOICES = [
-        (PAYMENT_METHOD_ONLINE, "Online"),
-        (PAYMENT_METHOD_CASH, "Cash"),
+        (PAYMENT_METHOD_ONLINE, "آنلاین"),
+        (PAYMENT_METHOD_CASH, "درب منزل"),
     ]
 
     RECEIVER_IS_MYSELF = "M"
@@ -282,8 +307,13 @@ class Order(Date):
     delivery_date = models.CharField(
         max_length=150, null=True, blank=True, verbose_name=_("تاریخ تحویل")
     )
-    deliver_post_name = models.CharField(max_length=500, null=True, blank=True, verbose_name=_("نام پست"),
-                                         help_text=_("این فیلد در پیامک ارسال میشود."))
+    deliver_post_name = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name=_("نام پست"),
+        help_text=_("این فیلد در پیامک ارسال میشود."),
+    )
     delivery_tracking_url = models.CharField(
         max_length=700,
         null=True,
@@ -353,7 +383,9 @@ class Order(Date):
             "اگر وضعیت رد درخواست مرجوعی را انتخاب میکنید لطفا قبلا از ذخیره کردن دلیل رد کردن را هم در فیلد خودش بنویسید"
         ),
     )
-    returned_asked_reason = models.TextField(null=True,blank=True, verbose_name=_("دلیل درخواست مرجوعی"))
+    returned_asked_reason = models.TextField(
+        null=True, blank=True, verbose_name=_("دلیل درخواست مرجوعی")
+    )
     returned_rejected_reason = models.CharField(
         max_length=500,
         null=True,
@@ -423,18 +455,25 @@ class OrderItem(models.Model):
     )
     quantity = models.PositiveIntegerField(verbose_name=_("تعداد"))
 
+    sold_price = models.PositiveBigIntegerField(default=0,verbose_name=" قیمت فروخته شده")
+
     def _get_discounted_price(self):
-        return self.product.price - (
-            (self.product.price * self.product.price_discount_percent) / 100
-        )
+        return self.product.price * (1 - (self.product.price_discount_percent / 100))
 
     def get_total(self):
         return self._get_discounted_price() * self.quantity
 
     def get_wallet_reward(self):
         return (
-            (self.product.price * self.product.wallet_discount) / 100
+            (self.product.price * self.product.wallet_diercount) / 100
         ) * self.quantity
+    
+    def save(self, *args, **kwargs):
+    # اگر sold_price هنوز مقدار نداشته باشد، آن را تنظیم کن
+        if not self.sold_price:
+            self.sold_price = round(self._get_discounted_price())  # گرد کردن قیمت نهایی
+
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = _("آیتم سفارش")
@@ -469,7 +508,7 @@ class OrderReceipt(Date):
         verbose_name_plural = _("رسید ها")
 
     def __str__(self):
-        return f"{self.authority} {self.request_msg} {self.error_msg}"
+        return f"{self.authority[:3]} ... {self.authority[-10:]}"
 
 
 class OrderProvider(models.Model):
@@ -481,7 +520,6 @@ class OrderProvider(models.Model):
 
     def __str__(self):
         return self.name
-
 
 
 class Banner(models.Model):
@@ -575,7 +613,7 @@ class PostImage(Date):
 class Collaborate_Contact(Date):
     COLLABORATE = "collaborate"
     CONTACT_US = "contact"
-    CHOICE = [(COLLABORATE, "collaborate"), (CONTACT_US, "contact us")]
+    CHOICE = [(COLLABORATE, _("همکاری ")), (CONTACT_US, _("تماس با ما"))]
 
     full_name = models.CharField(max_length=200, verbose_name=_("نام و نام خانوادگی"))
     phone_number = PhoneNumberField(region="IR", verbose_name=_("شماره تلفن"))
@@ -590,4 +628,4 @@ class Collaborate_Contact(Date):
         verbose_name_plural = _("درخواست های همکاری و ارتباط با ما")
 
     def __str__(self):
-        return f"{self.full_clean} object type = {self.obj_type}"
+        return self.full_name

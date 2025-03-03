@@ -26,6 +26,7 @@ secretkey.txt
 /core/staticfiles/
 /admin/
 /rest_framework/
+/core/media/
 
 # C extensions
 *.so
