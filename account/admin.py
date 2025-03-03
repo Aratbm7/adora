@@ -31,7 +31,7 @@ class UserAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         
     @admin.display(description="تاریخ ثبت نام")
     def get_date_joined(self, obj):
-        return show_date_time(obj.created_date)
+        return show_date_time(obj.date_joined)
     
     @admin.display(description="موبایل")
     def get_phone_number(self, obj):

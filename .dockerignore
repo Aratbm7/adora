@@ -12,7 +12,7 @@ docker-compose*.yml
 Dockerfile
 *.tar
 # **/migrations/*
-
+/core/media/
 __pycache__  
 *.pyc  
 *.pyo  

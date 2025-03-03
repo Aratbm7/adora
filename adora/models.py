@@ -301,7 +301,7 @@ class Order(Date):
     delivery_status = models.CharField(
         max_length=1,
         choices=DELIVERY_STATUS_CHOICES,
-        default=PENDING_STATUS,
+        default=NO_ANY_ACTION,
         verbose_name=_("وضعیت تحویل"),
     )
     delivery_date = models.CharField(
@@ -421,7 +421,7 @@ class Order(Date):
     def save(self, *args, **kwargs):
         if not self.tracking_number:
             self.tracking_number = self.generate_unique_tracking_number()
-
+            
         # # super().save(*args, **kwargs)
         # self.calculate_total_price()
 
@@ -465,7 +465,7 @@ class OrderItem(models.Model):
 
     def get_wallet_reward(self):
         return (
-            (self.product.price * self.product.wallet_diercount) / 100
+            (self.product.price * self.product.wallet_discount) / 100
         ) * self.quantity
     
     def save(self, *args, **kwargs):

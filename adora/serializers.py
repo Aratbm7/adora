@@ -569,6 +569,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
                 send_payment_information(order.id)
 
+            print('Orderrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr')
             return order
 
         except IntegrityError as e:

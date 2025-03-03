@@ -19,7 +19,10 @@ RUN addgroup --system adora_g && \
     adduser --system --ingroup adora_g adora_u  
 
 # Create necessary directories  
-RUN mkdir -p $HOME $APP_HOME $APP_HOME/media $APP_HOME/core/static  
+# ایجاد دایرکتوری‌های مورد نیاز و تنظیم مالکیت آنها
+RUN mkdir -p $APP_HOME/media $APP_HOME/core/static $APP_HOME/core/media && \
+    chown -R adora_u:adora_g $APP_HOME/media $APP_HOME/core/static $APP_HOME/core/media
+  
 
 # Set working directory  
 WORKDIR $APP_HOME  

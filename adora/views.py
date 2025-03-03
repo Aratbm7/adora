@@ -291,10 +291,16 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         try:
-            serializer.save(user=self.request.user)
+            print("Starting serializer.save")
+            instance = serializer.save(user=self.request.user)
+            print(f"Order created with ID: {instance.id}")
+
+            
         except ValidationError as e:
+            print(f"ValidationError: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            print(f"Exception: {str(e)}")
             return Response(
                 {"error": "An unexpected error occurred."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -348,7 +354,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 )
 
             order = Order.objects.filter(tracking_number=tracking_number).first()
-
             if not order:
                 return Response(
                     {
