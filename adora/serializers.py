@@ -1,4 +1,6 @@
+from ast import Dict
 from decimal import Decimal
+from typing import List
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
@@ -8,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 
 from account.models import User
 from adora.models import (
+    FAQ,
     Brand,
     Car,
     Category,
@@ -20,7 +23,6 @@ from adora.models import (
     PostImage,
     Product,
     ProductImage,
-    FAQ,
 )
 from adora.tasks import send_payment_information
 from rest_framework import serializers
@@ -207,10 +209,12 @@ class CommentSerializer(serializers.ModelSerializer):
             "id": obj.user.id,
         }
 
+
 class FAQSerializer(serializers.ModelSerializer):
     class Meta:
         model = FAQ
         fields = ["id", "question", "answer"]
+
 
 class ProductSearchSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
@@ -307,6 +311,7 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
             "guarantee",
             "guarantee_duration",
             "new",
+            "size",
             "main_category",
             "compatible_cars",
             "similar_products",
@@ -319,7 +324,7 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
             "buyer",
             "customer_point",
             "comments",
-            'faqs'
+            "faqs",
         ]
 
     def get_comments(self, obj):
@@ -371,6 +376,7 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
         faqs = obj.get_all_faqs()
         return FAQSerializer(faqs, many=True).data
 
+
 class ProductListSerializer(serializers.ModelSerializer):
     main_category = CategorySerializer(read_only=True, source="category")
     compatible_cars = serializers.SerializerMethodField(read_only=True)
@@ -402,6 +408,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             "best_seller",
             "guarantee_duration",
             "new",
+            "size",
             "main_category",
             "compatible_cars",
             "brand",
@@ -537,7 +544,9 @@ class OrderSerializer(serializers.ModelSerializer):
         order.save()
 
     def create(self, validated_data):
-        order_items_data = validated_data.pop("order_items")
+        order_items_data: List[Dict] = validated_data.pop("order_items")
+        # print("order_items_data", order_items_data)
+        # print('sold_pric', order_items_data[0]['sold_price'])
 
         try:
             # Wrap everything in a transaction to ensure atomicity
@@ -546,15 +555,24 @@ class OrderSerializer(serializers.ModelSerializer):
                 order = Order.objects.create(**validated_data)
                 # Create the order items in bulk
 
-                order_items = [
-                    OrderItem(
+                for item_data in order_items_data:
+                    order_item = OrderItem(
                         order=order,
-                        # sold_price=self._get_product_sold_price(item_data["product"]),
-                        **item_data,
+                        product=item_data["product"],
+                        quantity=item_data["quantity"],
                     )
-                    for item_data in order_items_data
-                ]
-                OrderItem.objects.bulk_create(order_items)
+                    order_item.save()  # ذخیره‌سازی به‌صورت معمولی، که متد save فراخوانی می‌شود
+                    # order_items.append(order_item)
+
+                    # order_items = [
+                #     OrderItem(
+                #         order=order,
+                #         # sold_price=self._get_product_sold_price(item_data["product"]),
+                #         **item_data
+                #     )
+                #     for item_data in order_items_data
+                # ]
+                # OrderItem.objects.bulk_create(order_items)
 
                 # Trigger order logic like wallet balance, etc.
                 self.calculate_total_price(order)
@@ -569,7 +587,6 @@ class OrderSerializer(serializers.ModelSerializer):
 
                 send_payment_information(order.id)
 
-            print('Orderrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr')
             return order
 
         except IntegrityError as e:

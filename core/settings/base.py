@@ -133,10 +133,10 @@ USE_TZ = True
 
 LANGUAGES = (
     ("fa", "فارسی"),
-    ('tr', ('Turkce')),
-    ("en", ("English")),
-    ("it", ("Italiano")),
-    ("fr", ("Français")),
+    # ('tr', ('Turkce')),
+    # ("en", ("English")),
+    # ("it", ("Italiano")),
+    # ("fr", ("Français")),
     # more than one language is expected here
 )
 LANGUAGE_CODE = "fa"

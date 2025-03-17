@@ -1,18 +1,18 @@
 import os
-import re
 
 from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.translation import gettext as _
 from jalali_date.admin import ModelAdminJalaliMixin
-from persian_tools import digits, separator
+from persian_tools import separator
 
 from adora.models import *
 from adora.tasks import send_order_status_message
 from core.utils.show_jalali_datetime import show_date_time
 from admin_auto_filters.filters import AutocompleteFilter
 
+from django.http import StreamingHttpResponse
 admin.site.site_header = "پنل ادمین آدورا یدک"
 admin.site.site_title = "پنل ادمین آدورا یدک"
 admin.site.index_title = " پمل ادمین آدورا یدک"
@@ -22,10 +22,6 @@ admin.site.register(OrderProvider)
 admin.site.register(Banner)
 admin.site.register(Post)
 admin.site.register(PostImage)
-
-
-def send_message():
-    print("hello")
 
 
 def get_full_name_or_phone_number(order: Order) -> str:
@@ -164,7 +160,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
             full_name = get_full_name_or_phone_number(obj)
             phone_number = str(obj.user.phone_number).replace("+98", "0")
             order_traking_number = obj.tracking_number
-            print(phone_number)
+            # print(phone_number)
             order_delivery_traking_num = obj.delivery_tracking_url
             deliver_post_name = obj.deliver_post_name
 
@@ -180,7 +176,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                         ],
                         int(text_code),
                     )
-                    print(text_code)
+                    # print(text_code)
                 if obj.delivery_status == "S":
                     text_code = os.environ.get("ORDER_SHIPPED")
                     send_order_status_message.delay(
@@ -330,8 +326,9 @@ class ProductAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         CompatibleCarsFilter,
         "best_seller",
         "new",
+        "size"
     )
-    inlines = [ProductImageInline]
+    inlines = (ProductImageInline,)
 
             
     def formfield_for_manytomany(self, db_field, request, **kwargs):

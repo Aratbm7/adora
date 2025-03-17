@@ -174,6 +174,27 @@ class Product(Date):
         help_text=_("مدت زمان به ماه وارد شود"),
     )
     new = models.BooleanField(default=False, verbose_name="محصول جدید")
+    
+    SIZE_MINI = "1"
+    SIZE_SMALL = "2"
+    SIZE_MEDIUM = "3"
+    SIZE_LARGE = "4"
+    
+    
+    SIZE_CHOICES = [
+        (SIZE_MINI, _("مینی")),
+        (SIZE_SMALL, _("کوچک")),
+        (SIZE_MEDIUM,_("معمولی")),
+        (SIZE_LARGE, _("بزرگ")),
+    ]
+
+    size = models.CharField(
+        max_length=1, 
+        choices=SIZE_CHOICES, 
+        default=SIZE_MINI, 
+        verbose_name="سایز"
+    )
+    
     buyer = models.PositiveIntegerField(default=0, verbose_name=_("تعداد خریدار"))
     customer_point = models.PositiveIntegerField(
         default=0, verbose_name=_("درصد رضایت خریداران")

@@ -586,13 +586,23 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def _get_full_name_or_phone_number(self, order: Order) -> str:
         user_prfile = order.user.profile
-        name = user_prfile.first_name
-        last_name = user_prfile.last_name
-        full_name = f"{user_prfile.first_name} {user_prfile.last_name}"
-        if name or last_name:
-            return full_name
+        name = user_prfile.first_name or ""
+        last_name = user_prfile.last_name or ""
+        full_name = f"{name} {last_name}"
+        if full_name.strip():
+            return full_name.strip()
 
-        return str(order.user.phone_number).replace("+98", "0")
+        # return str(order.user.phone_number).replace("+98", "0")
+        return "کاربر آدورا یدک"
+
+        # user_prfile = order.user.profile
+        # name = user_prfile.first_name
+        # last_name = user_prfile.last_name
+        # full_name = f"{user_prfile.first_name} {user_prfile.last_name}"
+        # if name or last_name:
+        #     return full_name
+
+        # return str(order.user.phone_number).replace("+98", "0")
 
     @action(
         detail=False,
