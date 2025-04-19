@@ -418,6 +418,27 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+
+    def _get_full_name_or_phone_number(self, order: Order) -> str:
+        user_prfile = order.user.profile
+        name = user_prfile.first_name or ""
+        last_name = user_prfile.last_name or ""
+        full_name = f"{name} {last_name}"
+        if full_name.strip():
+            return full_name.strip()
+
+        # return str(order.user.phone_number).replace("+98", "0")
+        return "کاربر آدورا یدک"
+
+        # user_prfile = order.user.profile
+        # name = user_prfile.first_name
+        # last_name = user_prfile.last_name
+        # full_name = f"{user_prfile.first_name} {user_prfile.last_name}"
+        # if name or last_name:
+        #     return full_name
+
+        # return str(order.user.phone_number).replace("+98", "0")
+        
     @action(
         detail=False,
         methods=["get"],
@@ -465,10 +486,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        user_full_name = (
-            f"{order.user.profile.first_name} {order.user.profile.last_name}"
-        )
-
+        # user_full_name = (
+        #     f"{order.user.profile.first_name} {order.user.profile.last_name}"
+        # )
+        user_full_name = self._get_full_name_or_phone_number(order)
+        
+        
         if payment_status == "OK":
 
             try:
@@ -598,25 +621,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
 
-    def _get_full_name_or_phone_number(self, order: Order) -> str:
-        user_prfile = order.user.profile
-        name = user_prfile.first_name or ""
-        last_name = user_prfile.last_name or ""
-        full_name = f"{name} {last_name}"
-        if full_name.strip():
-            return full_name.strip()
-
-        # return str(order.user.phone_number).replace("+98", "0")
-        return "کاربر آدورا یدک"
-
-        # user_prfile = order.user.profile
-        # name = user_prfile.first_name
-        # last_name = user_prfile.last_name
-        # full_name = f"{user_prfile.first_name} {user_prfile.last_name}"
-        # if name or last_name:
-        #     return full_name
-
-        # return str(order.user.phone_number).replace("+98", "0")
 
     @action(
         detail=False,
