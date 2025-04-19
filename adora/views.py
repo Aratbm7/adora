@@ -1,3 +1,4 @@
+from curses.ascii import isdigit
 import json
 import os
 import time
@@ -136,7 +137,17 @@ class ProductViewset(ModelViewSet):
         query_params = request.query_params
         min_price = query_params.get("min_price", "")
         max_price = query_params.get("max_price", "")
-
+        category_id = query_params.get("category", "")
+        hierarchy = []
+        
+        if category_id.isdigit():
+            try: 
+                category = Category.objects.get(id=int(category_id))
+                hierarchy = category.get_hierarchy()
+                
+            except Category.DoesNotExist:
+                pass
+        
         self.serializer_class = ProductListSerializer
         if (min_price.isdigit() and int(min_price) < 0) or len(min_price) > 20:
             return Response(
@@ -154,7 +165,10 @@ class ProductViewset(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return super().list(request, *args, **kwargs)
+        return Response({
+            "category_hierarchy": hierarchy,
+            "results": super().list(request, *args, **kwargs).data,
+        },status=status.HTTP_200_OK)
 
     @action(
         detail=False,

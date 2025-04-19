@@ -38,6 +38,22 @@ class Category(Date):
         verbose_name="دسته بندی مادر",
     )
 
+    def get_hierarchy(self) -> list:
+        """Returns the full category hierarchy from top-level to this category."""
+        hierarchy = []
+        category = self
+        while category:
+            hierarchy.insert(0, {
+                'id': category.id,
+                'name': category.name,
+            })
+            category = category.parent
+            
+        for index, item in enumerate(hierarchy):
+            item['category_level'] = index + 1
+ 
+ 
+        return hierarchy
     class Meta:
         verbose_name = _("دسته بندی")
         verbose_name_plural = _("دسته بندی کل")

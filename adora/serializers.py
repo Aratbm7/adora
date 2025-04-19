@@ -83,6 +83,8 @@ class CategorySerializer(serializers.ModelSerializer):
             # return CategorySerializer(obj.parent).data
             return obj.parent.name
         return None
+    
+    
 
 
 class SimilarProductsSerializer(serializers.ModelSerializer):
@@ -292,6 +294,8 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
     similar_products = SimilarProductsSerializer(many=True)
     images = ProductImageSerializer(many=True, read_only=True)
     wallet_discount_percent = serializers.CharField(source="wallet_discount")
+    category_hierarchy = serializers.SerializerMethodField()
+
 
     class Meta:
         model = Product
@@ -324,7 +328,10 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
             "buyer",
             "customer_point",
             "comments",
+            "category",
             "faqs",
+            "category_hierarchy",
+            
         ]
 
     def get_comments(self, obj):
@@ -376,6 +383,9 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
         faqs = obj.get_all_faqs()
         return FAQSerializer(faqs, many=True).data
 
+
+    def get_category_hierarchy(self, obj):
+        return obj.category.get_hierarchy()
 
 class ProductListSerializer(serializers.ModelSerializer):
     main_category = CategorySerializer(read_only=True, source="category")
