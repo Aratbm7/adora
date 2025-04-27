@@ -61,11 +61,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self) -> str:
         return str(self.phone_number).replace('+98', '0')
     
-    def has_perm(self, perm, obj=None):
-        return True
+    # def has_perm(self, perm, obj=None):
+    #     return True
 
-    def has_module_perms(self, app_label):
-        return True
+    # def has_module_perms(self, app_label):
+    #     return True
 
     # @property
     # def is_staff(self):
