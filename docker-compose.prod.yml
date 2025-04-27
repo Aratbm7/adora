@@ -149,10 +149,10 @@ services:
   #     - db
 
   flower:
-    build:
-     context: .
-     dockerfile: Dockerfile.prod
-       #image: adora-backend
+    # build:
+    #  context: .
+    #  dockerfile: Dockerfile.prod
+    image: adora-backend
     entrypoint: ./docker-entrypoint-celery-flower.sh
     volumes:
        - static_volume:/home/app/backend/core/static
