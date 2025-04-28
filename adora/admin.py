@@ -15,7 +15,7 @@ from admin_auto_filters.filters import AutocompleteFilter
 from django.http import StreamingHttpResponse
 admin.site.site_header = "پنل ادمین آدورا یدک"
 admin.site.site_title = "پنل ادمین آدورا یدک"
-admin.site.index_title = " پمل ادمین آدورا یدک"
+admin.site.index_title = " پنل ادمین آدورا یدک"
 
 # admin.site.register(Matrial)
 admin.site.register(OrderProvider)
