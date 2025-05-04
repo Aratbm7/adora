@@ -123,6 +123,30 @@ services:
   #   depends_on:
   #     - backend
 
+  wordpress:
+    image: wordpress:latest
+    ports:
+      - "8080:80"
+    environment:
+      WORDPRESS_DB_HOST: wordpress_db:3306
+      WORDPRESS_DB_USER: adora_user_lo
+      WORDPRESS_DB_PASSWORD: 1234_lo
+      WORDPRESS_DB_NAME: adora_db_lo
+    depends_on:
+      - wordpress_db
+
+  wordpress_db:
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: adora_db_lo
+      MYSQL_USER: adora_user_lo
+      MYSQL_PASSWORD: 1234_lo
+    volumes:
+      - ./wordpress_db_data:/var/lib/mysql
+
+
 volumes:
   static_volume_lo:
   postgres_data_lo:
