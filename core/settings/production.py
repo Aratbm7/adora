@@ -12,8 +12,8 @@ from .base import *
 # }
 
 
-# DEBUG =  bool(int(os.environ.get("DEBUG", default=0)))
-DEBUG = False
+DEBUG =  bool(int(os.environ.get("DEBUG", default=0)))
+# DEBUG = False
 ROOT_URLCONF = 'core.urls.urls_prod'
 
 LANGUAGE_CODE = 'fa'

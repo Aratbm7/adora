@@ -249,7 +249,8 @@ class AddressViewSet(ModelViewSet):
     serializer_class = AddressSerilizer
 
     def get_queryset(self):
-        profile_pk = self.kwargs["profile_pk"]
+        print("self.kwargs", self.kwargs)
+        profile_pk = self.kwargs.get("profile_pk", 0)
         profile = Profile.objects.filter(id=profile_pk).first()
         if profile:
             if profile.user == self.request.user:

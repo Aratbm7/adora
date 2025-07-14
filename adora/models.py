@@ -9,7 +9,6 @@ from django.utils.translation import gettext as _
 # from django.contrib.auth import get_user_model
 from phonenumber_field.modelfields import PhoneNumberField
 
-
 # Create your models here.
 class Date(models.Model):
     created_date = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ایجاد")
@@ -403,6 +402,9 @@ class Order(Date):
         verbose_name=_("انتخاب گیرنده"),
     )
 
+    torob_payment_token = models.CharField(null=True,blank=True, max_length=200, verbose_name=_("توکن پرداخت ترب پی"),
+                                           help_text=_("توکن پرداخت ترب پی فقط موقعی ساخته میشود که پرداخت با ترب پی انجام شود وگرنه خالی باید باشد."))
+    torob_payment_page_url = models.CharField(null=True, blank=True, max_length=200, verbose_name=("صفحه پرداخت ترب پی"))
     RETURNED_ASK = "RA"
     RETURNED_CONFIRMED = "RC"
     RETURNED_REJECTED = "RR"
@@ -521,6 +523,8 @@ class OrderItem(models.Model):
 
 
 class OrderReceipt(Date):
+    
+    # ZarinPal status
     authority = models.CharField(max_length=36, null=True, blank=True)
     request_code = models.IntegerField(
         default=0, help_text=_("کد اگر ۱۰۰ باشد یعنی موفقیت امیز بود")
@@ -536,17 +540,30 @@ class OrderReceipt(Date):
     card_hash = models.CharField(max_length=500, null=True, blank=True)
     card_pan = models.CharField(max_length=16, null=True, blank=True)
     connection_error = models.BooleanField(default=False)
+    
+    # Torob pay status
+    # Successful: 
+    torob_reciept = models.BooleanField(default=False)
+    torob_transaction_id = models.CharField(null=True,blank=True, max_length=200)
+    
+    # Failed
+    torob_error_message = models.TextField(null=True,blank=True)
+    torob_error_code = models.CharField(null=True,blank=True, max_length=10)
+
     order = models.OneToOneField(
         Order, on_delete=models.PROTECT, related_name="receipt"
     )
-
+    
     class Meta:
         verbose_name = _("رسید")
         verbose_name_plural = _("رسید ها")
 
     def __str__(self):
-        return f"{self.authority[:3]} ... {self.authority[-10:]}"
-
+        if self and self.authority:
+            return f"Zarin Pal:{self.authority[:3]}j ... {self.authority[-10:]}"
+        elif self and self.torob_reciept:
+            return "Torob Pay"
+        return '-'
 
 class OrderProvider(models.Model):
     name = models.CharField(max_length=100)
@@ -557,7 +574,6 @@ class OrderProvider(models.Model):
 
     def __str__(self):
         return self.name
-
 
 class Banner(models.Model):
     where = models.CharField(max_length=100)

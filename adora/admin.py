@@ -40,10 +40,10 @@ class UserFilter(AutocompleteFilter):
     title = _("شماره تلفن")
     field_name = 'user'
     text_help = _("توجه کنید که شماره با +۹۸ ذخیره شده است.")
-    
+
 class OrderItemInline(admin.StackedInline):
     model = OrderItem
-    
+
 class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     search_fields = [
         "tracking_number",
@@ -233,7 +233,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
 class OrderFilter(AutocompleteFilter):
     titile = _("سفارش")
     field_name = 'order'
-    
+
 
 class OrderItemAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     list_display = ("order_link", "get_product", "quantity", 'get_sold_price')
@@ -274,7 +274,7 @@ class CategoryFilter(AutocompleteFilter):
 class BrandFilter(AutocompleteFilter):
     title = _("شرکت سازنده")
     field_name = 'brand'
-    
+
 
 class StockFilter(admin.SimpleListFilter):
     title = _("وضعیت موجودی")
@@ -294,13 +294,13 @@ class StockFilter(admin.SimpleListFilter):
             return queryset.filter(count_in_box=0)
         
         return queryset
-    
+
 
 class CompatibleCarsFilter(AutocompleteFilter):
     title = _("خودرو مناسب")
     field_name = 'compatible_cars'
-    
-    
+
+
 class ProductImageInline(admin.StackedInline):
     model = ProductImage
     show_change_link = "__all__"
@@ -465,7 +465,11 @@ class OrderReceiptAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
 
     @admin.display(description="Authority")
     def get_authority(self, obj):
-        return f"{obj.authority[:3]}j ... {obj.authority[-10:]}"
+        if obj and obj.authority:
+            return f"Zarin Pal:{obj.authority[:3]} ... {obj.authority[-10:]}"
+        elif obj and obj.torob_reciept:
+            return "Torob Pay"
+        return "-"
 
     @admin.display(description=_("سفارش"))
     def get_order(self, obj):
@@ -475,7 +479,37 @@ class OrderReceiptAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
             obj.order,
         )
 
-
+    def get_fieldsets(self, request, obj=None):
+        """Dynamically generates fieldsets."""
+        return (
+            (
+                "رسید پرداخت ترپ پی",
+                {  # This section appears first
+                    "fields": (
+                        "torob_transaction_id",
+                        "torob_error_message",
+                        "torob_error_code",
+                        "torob_reciept",
+                    ),
+                },
+            ),
+            (
+                "رسید پرداخت زرین پال",
+                {  # This section contains all fields dynamically
+                    "fields": (
+                        "authority",
+                        "request_code",
+                        "verify_code",
+                        "ref_id",
+                        "request_msg",
+                        "fee_type",
+                        "fee",
+                        "card_pan",
+                        "connection_error",
+                    ),
+                },
+            ),
+        )
 class ProductImageAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     list_display = ("alt", "get_image", "get_same_images")
     search_fields = ("alt", "product__en_name")
@@ -553,7 +587,7 @@ class FAQAdmin(admin.ModelAdmin):
     @admin.display(description=_("جواب"))
     def get_answer(self,obj):
         return f"{obj.answer[:20]} ..."
- 
+
 
 admin.site.register(Comment, CommentAdmin)
 admin.site.register(OrderReceipt, OrderReceiptAdmin)
@@ -566,5 +600,3 @@ admin.site.register(Category, CategoryAdmin)
 admin.site.register(Brand, BrandAdmin)
 admin.site.register(Car, CarAdmin)
 admin.site.register(Collaborate_Contact, Collabrate_ContactAdmin)
-
-

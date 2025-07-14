@@ -122,29 +122,72 @@ services:
   #     - 80:8000
   #   depends_on:
   #     - backend
-
   wordpress:
-    image: wordpress:latest
+    image: wordpress:6.5-php8.2-apache
+    container_name: wordpress
+    restart: unless-stopped
     ports:
       - "8080:80"
     environment:
       WORDPRESS_DB_HOST: wordpress_db:3306
-      WORDPRESS_DB_USER: adora_user_lo
-      WORDPRESS_DB_PASSWORD: 1234_lo
-      WORDPRESS_DB_NAME: adora_db_lo
+      WORDPRESS_DB_NAME: wp_db
+      WORDPRESS_DB_USER: wp_usr
+      WORDPRESS_DB_PASSWORD: wusr@2025@66688
+    volumes:
+      - wordpress_data:/var/www/html
+    # expose:
+    #   - "80"
     depends_on:
       - wordpress_db
-
+        # condition: service_healthy
+    
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:80/wp-login.php"]
+    #   interval: 5s
+    #   timeout: 5s
+    #   retries: 5
+      
   wordpress_db:
-    image: mysql:5.7
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: adora_db_lo
-      MYSQL_USER: adora_user_lo
-      MYSQL_PASSWORD: 1234_lo
-    volumes:
-      - ./wordpress_db_data:/var/lib/mysql
+      image: mysql:8.0
+      container_name: wordpress_db
+      restart: unless-stopped
+      environment:
+        MYSQL_DATABASE: wp_db
+        MYSQL_USER: wp_usr
+        MYSQL_PASSWORD: wusr@2025@66688
+        MYSQL_ROOT_PASSWORD: rootpass
+      volumes:
+        - wordpress_db_data:/var/lib/mysql
+
+      healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "wp_usr", "-p", "wusr@2025@66688"]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+
+      
+  # wordpress:
+  #   image: wordpress:latest
+  #   ports:
+  #     - "8080:80"
+  #   environment:
+  #     WORDPRESS_DB_HOST: wordpress_db:3306
+  #     WORDPRESS_DB_USER: adora_user_lo
+  #     WORDPRESS_DB_PASSWORD: 1234_lo
+  #     WORDPRESS_DB_NAME: adora_db_lo
+  #   depends_on:
+  #     - wordpress_db
+
+  # wordpress_db:
+  #   image: mysql:5.7
+  #   restart: always
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: root
+  #     MYSQL_DATABASE: adora_db_lo
+  #     MYSQL_USER: adora_user_lo
+  #     MYSQL_PASSWORD: 1234_lo
+  #   volumes:
+  #     - ./wordpress_db_data:/var/lib/mysql
 
 
 volumes:
@@ -152,4 +195,5 @@ volumes:
   postgres_data_lo:
   media_volume_lo:
   redis_master_data:
-
+  wordpress_data:
+  wordpress_db_data:

@@ -1,13 +1,17 @@
-from curses.ascii import isdigit
 import json
 import os
+import re
 import time
 import traceback
+from urllib import request
 
 import requests
 from django.db.models import Prefetch
 from django_filters import rest_framework as filters
+
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
 from fuzzywuzzy import fuzz
 from requests.exceptions import ConnectionError
 from rest_framework.decorators import action
@@ -28,6 +32,7 @@ from adora.models import (
     Collaborate_Contact,
     Comment,
     Order,
+    OrderReceipt,
     Post,
     Product,
 )
@@ -48,7 +53,7 @@ from adora.serializers import (
     ProductSearchSerializer,
     ProductTorobSerilizers,
 )
-from adora.tasks import send_order_status_message
+from adora.tasks import send_order_status_message, get_torobpay_access_token
 from core.permissions import (  # object_level_permissions,
     object_level_permissions_restricted_actions,
     personal_permissions,
@@ -294,7 +299,7 @@ class CommentViewSet(ModelViewSet):
         comments = Comment.objects.filter(user=request.user)
         serializer = self.get_serializer(comments, many=True)
         return Response(serializer.data)        
-        
+
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
@@ -303,13 +308,17 @@ class OrderViewSet(viewsets.ModelViewSet):
         object_level_permissions_restricted_actions({"u": 31, "a": 63, "o": 3}),
     ]
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
     def perform_create(self, serializer):
         try:
             print("Starting serializer.save")
             instance = serializer.save(user=self.request.user)
             print(f"Order created with ID: {instance.id}")
 
-            
         except ValidationError as e:
             print(f"ValidationError: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -354,10 +363,10 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(
         detail=False,
         methods=["get"],
-        url_path="payment-request-info",
+        url_path="zarinpal-payment-request-info",
         permission_classes=[permissions.IsAuthenticated],
     )
-    def payment_status(self, request: Request):
+    def zarinpal_payment_status(self, request: Request):
         try:
             tracking_number = request.query_params.get("tracking_number")
 
@@ -410,14 +419,13 @@ class OrderViewSet(viewsets.ModelViewSet):
                     {"message": order_receipt.error_msg, "code": request_code},
                     status=status.HTTP_402_PAYMENT_REQUIRED,
                 )
-        except Exception as e:
+        except Exception:
             error_message = str(traceback.format_exc())
             print(error_message)
             return Response(
                 {"message": f"An unexpected error!!"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
 
     def _get_full_name_or_phone_number(self, order: Order) -> str:
         user_prfile = order.user.profile
@@ -438,14 +446,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         #     return full_name
 
         # return str(order.user.phone_number).replace("+98", "0")
-        
+
     @action(
         detail=False,
         methods=["get"],
-        url_path="payment-verified",
+        url_path="zarinpal-payment-verification",
         permission_classes=[permissions.IsAuthenticated],
     )
-    def payment_verified(
+    def zarinpal_payment_verified(
         self,
         request: Request,
     ):
@@ -490,8 +498,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         #     f"{order.user.profile.first_name} {order.user.profile.last_name}"
         # )
         user_full_name = self._get_full_name_or_phone_number(order)
-        
-        
+
         if payment_status == "OK":
 
             try:
@@ -621,6 +628,158 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
 
+    
+    @swagger_auto_schema(
+        manual_parameters=[openapi.Parameter(
+        'access_token',
+        openapi.IN_QUERY,
+        description="The Torob Pay access token.",
+        type=openapi.TYPE_STRING,
+        # default="ALFDJKNALDSJKAJSD;IFJAISFUAJLKFJAOSDF.ASDFHALDFAS=="
+    ),openapi.Parameter(
+        'tracking_number',
+        openapi.IN_QUERY,
+        description="Order tracking number.",
+        type=openapi.TYPE_STRING,
+        # default="ADO_ALASDKFJALDLA"
+    )],
+            responses={200: "OK", 400:"Bad Request"},
+        )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="torobpay-payment-verification",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def torobpay_payment_verify(self, request:Request):
+        try:
+            TOROBPAY_BASE_URL = os.getenv("TOROBPAY_BASE_URL")
+            TOROBPAY_PAYMENT_VERIFY = os.getenv("TOROBPAY_PAYMENT_VERIFY")
+            TOROBPAY_PAYMENT_SETTLE = os.getenv("TOROBPAY_PAYMENT_SETTLE")
+            access_token = request.query_params.get("torob_access_token", "")
+            
+            
+
+            tracking_number = request.query_params.get("tracking_number", "")
+
+            if not tracking_number or access_token:
+                return Response(
+                    {
+                        "message": "Missing required parameters {tracking_number} or {torob_access_token}"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            order = Order.objects.filter(tracking_number=tracking_number).first()
+
+            if not order:
+                return Response(
+                    {"message": f"No order found with tracking number {tracking_number}."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            payment_token = order.torob_payment_token
+            if not payment_token:
+                return Response(
+                    {"message": f"No order payment token found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            order_receipt: OrderReceipt = order.receipt
+
+            if not order_receipt:
+                return Response(
+                    {"message": "No order receipt found for this order."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            header = {
+                "content-type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+                }
+
+            res = requests.post(
+                url=f"{TOROBPAY_BASE_URL}/{TOROBPAY_PAYMENT_VERIFY}",
+                headers=header,
+                data=json.dumps({"paymentToken": payment_token}),
+            )
+            res_dict = res.json()
+            if res_dict.get("successful", False):
+                print(f"Payment Token successfully is taked")
+                transaction_id = res_dict.get("response", {}).get("transactionId", "")
+                print("transactionId : ",transaction_id)
+                order_receipt.torob_transaction_id = transaction_id
+                order_receipt.save()
+
+
+                res_settle = requests.post(
+                url=f"{TOROBPAY_BASE_URL}/{TOROBPAY_PAYMENT_SETTLE}",
+                headers=header,
+                data=json.dumps({"paymentToken": payment_token}),
+            )
+                res_dict_settle = res_settle.json()
+                if res_dict_settle.get("successful", False):   
+                    
+                    # Send successful message to the user
+                    user_full_name = self._get_full_name_or_phone_number(order)
+                    order_success_text_code = os.environ.get("ORDER_SUCCESS")
+                    sms_message = [user_full_name, order.tracking_number]
+                    send_order_status_message.delay(
+                    str(order.user.phone_number).replace("+98", "0"),
+                    sms_message,
+                    int(order_success_text_code),
+                )
+
+                    return Response(
+                        {"message:": "Successfully verified and settled payment."},
+                        status=status.HTTP_200_OK,      
+                    )
+
+                else:
+                    error_message = res_dict_settle.get("errorData", {}).get(
+                        "message", "Unknown error"
+                    )
+                    error_code = res_dict_settle.get("errorData", {}).get("errorCode", "Unknown code")
+                    order_receipt.torob_error_message = error_message
+                    order_receipt.torob_error_code = error_code
+                    order_receipt.save()
+                    return Response(
+                        {
+                        "message": "Payment was verification successfully but Not Setteled", 
+                        "error_message": error_message,
+                         "error_code": error_code},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            else: 
+                error_message =  res_dict.get("errorData",{}).get("message", "Unknown error")
+                error_code =  res_dict.get("errorData",{}).get("errorCode", "Unknown error")
+                order_receipt.torob_error_message = error_message
+                order_receipt.torob_error_code = error_code
+                order_receipt.save()
+                return Response(
+                        { "message": "Payment verification failed",
+                        "error_message": error_message,
+                         "error_code": error_code},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+        except Exception:
+            error_message = str(traceback.format_exc())
+            order_receipt.torob_error_message = error_message
+            order_receipt.save()
+            print(error_message)
+            return Response(
+                {"message": f"An unexpected error!!"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ConnectionError:
+            error_message = str(traceback.format_exc())
+            print(error_message)
+            order_receipt.torob_error_message = error_message
+            order_receipt.save()
+            return Response(
+                {"message": f"An unexpected error!!"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     @action(
         detail=False,
@@ -683,7 +842,26 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    
+    @action(
+    detail=False,
+    methods=["get"],
+    url_path="torobpay-access-token",
+    permission_classes=[permissions.IsAuthenticated],
+    )
+    def get_torob_access_token(sefl, request):
 
+        access_token = get_torobpay_access_token()
+        if not access_token:
+            return Response(
+                {"message": "Can't get access token try again"},
+                status=status.HTTP_400_BAD_REQUEST
+            ) 
+            
+        return Response(
+                {"access_token": f'Bearer {access_token}'},
+                status=status.HTTP_200_OK
+            ) 
 class PostViewSet(ModelViewSet):
     http_method_names = ["get"]
     queryset = Post.objects.all()
@@ -691,7 +869,7 @@ class PostViewSet(ModelViewSet):
 
     permission_classes = [permissions.AllowAny]
 
-    
+
 class CollaborateAndContactUsViewset(ModelViewSet):
     http_method_names = ["get", "post", "put"]
     queryset = Collaborate_Contact.objects.all()

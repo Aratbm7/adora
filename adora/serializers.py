@@ -1,3 +1,4 @@
+import os
 from ast import Dict
 from decimal import Decimal
 from typing import List
@@ -24,7 +25,10 @@ from adora.models import (
     Product,
     ProductImage,
 )
-from adora.tasks import send_payment_information
+from adora.tasks import (
+    send_torobpay_payment_information,
+    send_zarin_payment_information,
+)
 from rest_framework import serializers
 
 
@@ -35,8 +39,6 @@ class CarSerializer(serializers.ModelSerializer):
 
 
 # class CategorySeriali
-
-
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
@@ -83,8 +85,6 @@ class CategorySerializer(serializers.ModelSerializer):
             # return CategorySerializer(obj.parent).data
             return obj.parent.name
         return None
-    
-    
 
 
 class SimilarProductsSerializer(serializers.ModelSerializer):
@@ -296,7 +296,6 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
     wallet_discount_percent = serializers.CharField(source="wallet_discount")
     category_hierarchy = serializers.SerializerMethodField()
 
-
     class Meta:
         model = Product
         fields = [
@@ -331,7 +330,6 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
             "category",
             "faqs",
             "category_hierarchy",
-            
         ]
 
     def get_comments(self, obj):
@@ -383,9 +381,9 @@ class ProductRetrieveSerializer(serializers.ModelSerializer):
         faqs = obj.get_all_faqs()
         return FAQSerializer(faqs, many=True).data
 
-
     def get_category_hierarchy(self, obj):
         return obj.category.get_hierarchy()
+
 
 class ProductListSerializer(serializers.ModelSerializer):
     main_category = CategorySerializer(read_only=True, source="category")
@@ -524,6 +522,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "returned_status",
             "returned_rejected_reason",
             "returned_asked_reason",
+            "torob_payment_page_url",
+            "torob_payment_token",
         )
 
     def calculate_total_price(self, order):
@@ -557,7 +557,11 @@ class OrderSerializer(serializers.ModelSerializer):
         order_items_data: List[Dict] = validated_data.pop("order_items")
         # print("order_items_data", order_items_data)
         # print('sold_pric', order_items_data[0]['sold_price'])
-
+        request = self.context.get("request")
+        if not request:
+            torob_access_token = "There is no Torob Access Token"    
+        torob_access_token = request.query_params.get('torob_access_token')
+        
         try:
             # Wrap everything in a transaction to ensure atomicity
             with transaction.atomic():
@@ -595,7 +599,17 @@ class OrderSerializer(serializers.ModelSerializer):
                 # Save total reward of this order to user's wallet
                 self.calculate_order_reward(order)
 
-                send_payment_information(order.id)
+                # print(OrderSerializer(order).data)
+                # print("order.payment_reference", order.payment_reference)
+                # print("order.payment_reference", os.getenv("TOROBPAY_MERCHANT_NAME"))
+
+                if order.payment_reference == os.getenv("ZARIN_MERCHANT_NAME"):
+                    send_zarin_payment_information(order)
+                    print("hello_zarin")
+
+                if order.payment_reference == os.getenv("TOROBPAY_MERCHANT_NAME"):
+                    print("helllo_torob")
+                    send_torobpay_payment_information(order, torob_access_token)
 
             return order
 

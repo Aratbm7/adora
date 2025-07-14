@@ -158,6 +158,7 @@ REST_FRAMEWORK = {
     
     ),
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        "rest_framework.authentication.BasicAuthentication",
 
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
@@ -235,3 +236,10 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # بستن مرورگر باعث خرو
 SESSION_COOKIE_SECURE = False  # اگر SSL ندارید، باید False باشد
 SESSION_COOKIE_HTTPONLY = True
 SESSION_SAVE_EVERY_REQUEST = True  # هر درخواس
+
+# SWAGGER_SETTINGS = {
+#     "SECURITY_DEFINITIONS": {"basic": {"type": "basic"}},
+#     "USE_SESSION_AUTH": True,
+# }
+# LOGIN_URL = "rest_framework:login"
+# LOGOUT_URL = "rest_framework:logout"
