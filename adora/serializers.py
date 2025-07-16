@@ -14,6 +14,7 @@ from adora.models import (
     FAQ,
     Brand,
     Car,
+    CashDiscountPercent,
     Category,
     Collaborate_Contact,
     Comment,
@@ -526,8 +527,34 @@ class OrderSerializer(serializers.ModelSerializer):
             "torob_payment_token",
         )
 
-    def calculate_total_price(self, order):
-        total = sum([item.get_total() for item in order.order_items.all()])
+    def calculate_total_price_for_cahs_purchase(self, order: Order):
+        """This method calculates the total price for cash purchase orders.
+        It applies the cash_discount_percent to the total price of the order items
+        and adds the delivery cost.
+        
+
+        Args:
+            order (Order)
+        """
+        cash_discount_percent = CashDiscountPercent.objects.last()
+
+        total = sum([item.get_total() for item in order.order_items.all()]) 
+        if  cash_discount_percent:
+            print("zarinpal_discount_percent", cash_discount_percent.zarinpal_discount_percent)
+            total -= (total * cash_discount_percent.zarinpal_discount_percent) / 100
+        else:
+            print("Cash Discoutn Percent not found (message from order serizlier)")
+            
+        order.total_price = total + order.delivery_cost
+        order.save()
+        
+    def calculate_total_price_for_Installment_purchase(self, order: Order):
+        """This mehtod calculates the total price for installment purchase orders.
+
+        Args:
+            order (Order)
+        """
+        total = sum([item.get_total() for item in order.order_items.all()]) 
         order.total_price = total + order.delivery_cost
         order.save()
 
@@ -559,9 +586,9 @@ class OrderSerializer(serializers.ModelSerializer):
         # print('sold_pric', order_items_data[0]['sold_price'])
         request = self.context.get("request")
         if not request:
-            torob_access_token = "There is no Torob Access Token"    
-        torob_access_token = request.query_params.get('torob_access_token')
-        
+            torob_access_token = "There is no Torob Access Token"
+        torob_access_token = request.query_params.get("torob_access_token")
+
         try:
             # Wrap everything in a transaction to ensure atomicity
             with transaction.atomic():
@@ -576,40 +603,26 @@ class OrderSerializer(serializers.ModelSerializer):
                         quantity=item_data["quantity"],
                     )
                     order_item.save()  # ذخیره‌سازی به‌صورت معمولی، که متد save فراخوانی می‌شود
-                    # order_items.append(order_item)
 
-                    # order_items = [
-                #     OrderItem(
-                #         order=order,
-                #         # sold_price=self._get_product_sold_price(item_data["product"]),
-                #         **item_data
-                #     )
-                #     for item_data in order_items_data
-                # ]
-                # OrderItem.objects.bulk_create(order_items)
-
-                # Trigger order logic like wallet balance, etc.
-                self.calculate_total_price(order)
-
-                # Save total reward to user's wallet
-                if order.use_wallet_balance:
-                    print(" order.use_wallet_balance", order.use_wallet_balance)
-                    self.use_user_walet_balance_in_order(order)
-
-                # Save total reward of this order to user's wallet
-                self.calculate_order_reward(order)
-
-                # print(OrderSerializer(order).data)
-                # print("order.payment_reference", order.payment_reference)
-                # print("order.payment_reference", os.getenv("TOROBPAY_MERCHANT_NAME"))
 
                 if order.payment_reference == os.getenv("ZARIN_MERCHANT_NAME"):
+                    # Calculate total price for cash purchase
+                    self.calculate_total_price_for_cahs_purchase(order)
+                    # Save order reward to user's wallet
+                    self.calculate_order_reward(order)
                     send_zarin_payment_information(order)
                     print("hello_zarin")
 
                 if order.payment_reference == os.getenv("TOROBPAY_MERCHANT_NAME"):
+                    self.calculate_total_price_for_Installment_purchase(order)
                     print("helllo_torob")
                     send_torobpay_payment_information(order, torob_access_token)
+                    
+                # Use wallet_balance 
+                if order.use_wallet_balance:
+                    print(" order.use_wallet_balance", order.use_wallet_balance)
+                    self.use_user_walet_balance_in_order(order)
+
 
             return order
 
@@ -852,3 +865,10 @@ class OrderRejectedReasonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ["returned_rejected_reason"]
+
+
+class CashDiscountPercentSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CashDiscountPercent
+        fields = ["zarinpal_discount_percent"]

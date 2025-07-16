@@ -1,6 +1,7 @@
 import random
 import string
 from importlib.util import module_from_spec
+from tabnanny import verbose
 
 from django.conf import settings
 from django.db import models
@@ -273,7 +274,16 @@ class Product(Date):
     def __str__(self):
         return self.fa_name
 
+class CashDiscountPercent(models.Model):
+    zarinpal_discount_percent = models.PositiveIntegerField(default=0, verbose_name=_("درصد تخفیف زرین پال")) 
 
+    class Meta:
+        verbose_name = _("درصد تخفیف خرید نقد")
+        verbose_name_plural = _("درصد تخفیف خرید نقد")
+    
+    def __str__(self):
+        return f"{self.zarinpal_discount_percent}%"
+    
 class Order(Date):
     NO_ANY_ACTION = "N"
     PENDING_STATUS = "P"

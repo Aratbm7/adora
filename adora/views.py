@@ -8,10 +8,8 @@ from urllib import request
 import requests
 from django.db.models import Prefetch
 from django_filters import rest_framework as filters
-
-from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-
+from drf_yasg.utils import swagger_auto_schema
 from fuzzywuzzy import fuzz
 from requests.exceptions import ConnectionError
 from rest_framework.decorators import action
@@ -28,6 +26,7 @@ from adora.models import (
     Banner,
     Brand,
     Car,
+    CashDiscountPercent,
     Category,
     Collaborate_Contact,
     Comment,
@@ -40,6 +39,7 @@ from adora.paginations import ProductPagination
 from adora.serializers import (
     BrandSerializer,
     CarSerializer,
+    CashDiscountPercentSerializer,
     CategoryWhitChildrenSerializer,
     CollaborateAndContactUsSerializer,
     CommentSerializer,
@@ -53,7 +53,7 @@ from adora.serializers import (
     ProductSearchSerializer,
     ProductTorobSerilizers,
 )
-from adora.tasks import send_order_status_message, get_torobpay_access_token
+from adora.tasks import get_torobpay_access_token, send_order_status_message
 from core.permissions import (  # object_level_permissions,
     object_level_permissions_restricted_actions,
     personal_permissions,
@@ -144,15 +144,15 @@ class ProductViewset(ModelViewSet):
         max_price = query_params.get("max_price", "")
         category_id = query_params.get("category", "")
         hierarchy = []
-        
+
         if category_id.isdigit():
-            try: 
+            try:
                 category = Category.objects.get(id=int(category_id))
                 hierarchy = category.get_hierarchy()
-                
+
             except Category.DoesNotExist:
                 pass
-        
+
         self.serializer_class = ProductListSerializer
         if (min_price.isdigit() and int(min_price) < 0) or len(min_price) > 20:
             return Response(
@@ -170,10 +170,13 @@ class ProductViewset(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return Response({
-            "category_hierarchy": hierarchy,
-            "results": super().list(request, *args, **kwargs).data,
-        },status=status.HTTP_200_OK)
+        return Response(
+            {
+                "category_hierarchy": hierarchy,
+                "results": super().list(request, *args, **kwargs).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(
         detail=False,
@@ -294,11 +297,17 @@ class CommentViewSet(ModelViewSet):
         serializer = self.get_serializer(comment.get_replies(), many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'], url_path='my-comments', permission_classes=[permissions.IsAuthenticated])
-    def my_comments(self, request:Request):
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="my-comments",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def my_comments(self, request: Request):
         comments = Comment.objects.filter(user=request.user)
         serializer = self.get_serializer(comments, many=True)
-        return Response(serializer.data)        
+        return Response(serializer.data)
+
 
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all()
@@ -310,7 +319,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context['request'] = self.request
+        context["request"] = self.request
         return context
 
     def perform_create(self, serializer):
@@ -447,21 +456,20 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         # return str(order.user.phone_number).replace("+98", "0")
 
-    def _success_sms(self, order:Order):
+    def _success_sms(self, order: Order):
         send_order_status_message.delay(
             str(order.user.phone_number).replace("+98", "0"),
-             [self._get_full_name_or_phone_number(order), order.tracking_number],
+            [self._get_full_name_or_phone_number(order), order.tracking_number],
             int(os.getenv("ORDER_SUCCESS")),
         )
-    
-    def _failed_sms(self, order:Order):
+
+    def _failed_sms(self, order: Order):
         send_order_status_message.delay(
             str(order.user.phone_number).replace("+98", "0"),
             [self._get_full_name_or_phone_number(order)],
             int(os.getenv("ORDER_FAILED")),
         )
-    
-    
+
     @action(
         detail=False,
         methods=["get"],
@@ -543,7 +551,6 @@ class OrderViewSet(viewsets.ModelViewSet):
             if verify_res.status_code == 200:
                 verfiy_data = verify_res_json.get("data", {})
 
-
                 card_hash = verfiy_data.get("card_hash")
                 card_pan = verfiy_data.get("card_pan")
                 ref_id = verfiy_data.get("ref_id")
@@ -585,7 +592,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             else:
                 verify_data = verify_res_json.get("errors", {})
-             
+
                 verify_code = verify_data.get("code")
                 message = verify_data.get("message")
                 order_receipt.verify_code = verify_code
@@ -606,7 +613,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.payment_status = "F"
             order.save()
             self._failed_sms(order)
-            
+
             return Response(
                 {"message": "Payment failed and order status updated to Failed."},
                 status=status.HTTP_200_OK,
@@ -620,23 +627,25 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
 
-
     @swagger_auto_schema(
-        manual_parameters=[openapi.Parameter(
-        'access_token',
-        openapi.IN_QUERY,
-        description="The Torob Pay access token.",
-        type=openapi.TYPE_STRING,
-        # default="ALFDJKNALDSJKAJSD;IFJAISFUAJLKFJAOSDF.ASDFHALDFAS=="
-    ),openapi.Parameter(
-        'tracking_number',
-        openapi.IN_QUERY,
-        description="Order tracking number.",
-        type=openapi.TYPE_STRING,
-        # default="ADO_ALASDKFJALDLA"
-    )],
-            responses={200: "OK", 400:"Bad Request"},
-        )
+        manual_parameters=[
+            openapi.Parameter(
+                "access_token",
+                openapi.IN_QUERY,
+                description="The Torob Pay access token.",
+                type=openapi.TYPE_STRING,
+                # default="ALFDJKNALDSJKAJSD;IFJAISFUAJLKFJAOSDF.ASDFHALDFAS=="
+            ),
+            openapi.Parameter(
+                "tracking_number",
+                openapi.IN_QUERY,
+                description="Order tracking number.",
+                type=openapi.TYPE_STRING,
+                # default="ADO_ALASDKFJALDLA"
+            ),
+        ],
+        responses={200: "OK", 400: "Bad Request"},
+    )
     @action(
         detail=False,
         methods=["get"],
@@ -644,7 +653,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         # permission_classes=[permissions.IsAuthenticated],
         permission_classes=[permissions.AllowAny],
     )
-    def torobpay_payment_verify(self, request:Request):
+    def torobpay_payment_verify(self, request: Request):
         try:
             TOROBPAY_BASE_URL = os.getenv("TOROBPAY_BASE_URL")
             TOROBPAY_PAYMENT_VERIFY = os.getenv("TOROBPAY_PAYMENT_VERIFY")
@@ -665,7 +674,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             if not order:
                 return Response(
-                    {"message": f"No order found with tracking number {tracking_number}."},
+                    {
+                        "message": f"No order found with tracking number {tracking_number}."
+                    },
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
@@ -686,8 +697,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             header = {
                 "content-type": "application/json",
-                "Authorization": f"Bearer {access_token}"
-                }
+                "Authorization": f"Bearer {access_token}",
+            }
 
             res = requests.post(
                 url=f"{TOROBPAY_BASE_URL}/{TOROBPAY_PAYMENT_VERIFY}",
@@ -698,72 +709,83 @@ class OrderViewSet(viewsets.ModelViewSet):
             if res_dict.get("successful", False):
                 print(f"Payment Token successfully is taked")
                 transaction_id = res_dict.get("response", {}).get("transactionId", "")
-                print("transactionId : ",transaction_id)
+                print("transactionId : ", transaction_id)
                 order_receipt.torob_transaction_id = transaction_id
                 order_receipt.save()
 
                 res_settle = requests.post(
-                url=f"{TOROBPAY_BASE_URL}/{TOROBPAY_PAYMENT_SETTLE}",
-                headers=header,
-                data=json.dumps({"paymentToken": payment_token}),
-            )
+                    url=f"{TOROBPAY_BASE_URL}/{TOROBPAY_PAYMENT_SETTLE}",
+                    headers=header,
+                    data=json.dumps({"paymentToken": payment_token}),
+                )
                 res_dict_settle = res_settle.json()
-                if res_dict_settle.get("successful", False):   
-                    
+                if res_dict_settle.get("successful", False):
+
                     # Send successful message to the user
                     order.payment_status = "C"
                     order.save()
-                    
-                    # Send Successfull sms 
+
+                    # Send Successfull sms
                     self._success_sms(order)
 
                     return Response(
-                        {"message:": "Successfully verified and settled payment.",
-                         "response":res_dict_settle.get("response", {})},
-                        status=status.HTTP_200_OK,      
+                        {
+                            "message:": "Successfully verified and settled payment.",
+                            "response": res_dict_settle.get("response", {}),
+                        },
+                        status=status.HTTP_200_OK,
                     )
 
                 else:
                     error_message = res_dict_settle.get("errorData", {}).get(
                         "message", "Unknown error"
                     )
-                    error_code = res_dict_settle.get("errorData", {}).get("errorCode", "Unknown code")
+                    error_code = res_dict_settle.get("errorData", {}).get(
+                        "errorCode", "Unknown code"
+                    )
                     order_receipt.torob_error_message = error_message
                     order_receipt.torob_error_code = error_code
                     order_receipt.save()
-                    
+
                     # Save order payment status.
                     order.payment_status = "F"
                     order.save()
-                    
+
                     # Send failed sms to user
                     self._failed_sms(order)
-                    
+
                     return Response(
                         {
-                        "message": "Payment Sttlement failed", 
-                        "TrobPayRrror":res_dict_settle.get("errorData", {})},
+                            "message": "Payment Sttlement failed",
+                            "TrobPayRrror": res_dict_settle.get("errorData", {}),
+                        },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-            else: 
-                error_message =  res_dict.get("errorData",{}).get("message", "Unknown error")
-                error_code =  res_dict.get("errorData",{}).get("errorCode", "Unknown error")
+            else:
+                error_message = res_dict.get("errorData", {}).get(
+                    "message", "Unknown error"
+                )
+                error_code = res_dict.get("errorData", {}).get(
+                    "errorCode", "Unknown error"
+                )
                 order_receipt.torob_error_message = error_message
                 order_receipt.torob_error_code = error_code
                 order_receipt.save()
-                
+
                 # Save order payment status.
                 order.payment_status = "F"
                 order.save()
-                
+
                 # Send failed sms to user
                 self._failed_sms(order)
-                
+
                 return Response(
-                        { "message": "Payment verification failed in Verification step",
-                           "TrobPayRrror": res_dict.get("errorData",{})},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                    {
+                        "message": "Payment verification failed in Verification step",
+                        "TrobPayRrror": res_dict.get("errorData", {}),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         except Exception:
             error_message = str(traceback.format_exc())
             order_receipt.torob_error_message = error_message
@@ -783,13 +805,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-
     @action(
-    detail=False,
-    methods=["get"],
-    url_path="torobpay-access-token",
-    # permission_classes=[permissions.IsAuthenticated],
-    permission_classes=[permissions.AllowAny],
+        detail=False,
+        methods=["get"],
+        url_path="torobpay-access-token",
+        # permission_classes=[permissions.IsAuthenticated],
+        permission_classes=[permissions.AllowAny],
     )
     def get_torob_access_token(sefl, request):
 
@@ -797,38 +818,37 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not access_token:
             return Response(
                 {"message": "Can't get access token try again"},
-                status=status.HTTP_400_BAD_REQUEST
-            ) 
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        return Response(
-                {"access_token": access_token},
-                status=status.HTTP_200_OK
-            ) 
-
+        return Response({"access_token": access_token}, status=status.HTTP_200_OK)
 
     @swagger_auto_schema(
-        manual_parameters=[openapi.Parameter(
-        'access_token',
-        openapi.IN_QUERY,
-        description="The Torob Pay access token.",
-        type=openapi.TYPE_STRING,
-        # default="ALFDJKNALDSJKAJSD;IFJAISFUAJLKFJAOSDF.ASDFHALDFAS=="
-    ),openapi.Parameter(
-        'amount',
-        openapi.IN_QUERY,
-        description="Amount of order price in Rial",
-        type=openapi.TYPE_STRING,
-        # default="ADO_ALASDKFJALDLA"
-    )],
-            responses={200: "OK", 400:"Bad Request"},
-        )
+        manual_parameters=[
+            openapi.Parameter(
+                "access_token",
+                openapi.IN_QUERY,
+                description="The Torob Pay access token.",
+                type=openapi.TYPE_STRING,
+                # default="ALFDJKNALDSJKAJSD;IFJAISFUAJLKFJAOSDF.ASDFHALDFAS=="
+            ),
+            openapi.Parameter(
+                "amount",
+                openapi.IN_QUERY,
+                description="Amount of order price in Rial",
+                type=openapi.TYPE_STRING,
+                # default="ADO_ALASDKFJALDLA"
+            ),
+        ],
+        responses={200: "OK", 400: "Bad Request"},
+    )
     @action(
         detail=False,
         methods=["get"],
         url_path="torob-check-merchant-eligible",
         permission_classes=[permissions.IsAuthenticated],
     )
-    def torob_merchant_eligible(self,request):
+    def torob_merchant_eligible(self, request):
         try:
             TOROBPAY_BASE_URL = os.getenv("TOROBPAY_BASE_URL")
             TOROBPAY_PAYMENT_ELIGIBLE = os.getenv("TOROBPAY_PAYMENT_ELIGIBLE")
@@ -848,8 +868,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             header = {
                 "content-type": "application/json",
-                "Authorization": f"Bearer {access_token}"
-                }
+                "Authorization": f"Bearer {access_token}",
+            }
 
             res = requests.get(
                 url=f"{TOROBPAY_BASE_URL}/{TOROBPAY_PAYMENT_ELIGIBLE}?amount={amount}",
@@ -857,10 +877,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             ).json()
 
             if res.get("successful", False):
-                return Response(
-                    res.get("response"),
-                    status=status.HTTP_200_OK
-                )
+                return Response(res.get("response"), status=status.HTTP_200_OK)
             else:
                 return Response(
                     res.get("errorData"), status=status.HTTP_400_BAD_REQUEST
@@ -895,7 +912,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             serializer = OrderRejectedReasonSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            returned_asked_reason = serializer.validated_data["returned_rejected_reason"]
+            returned_asked_reason = serializer.validated_data[
+                "returned_rejected_reason"
+            ]
             if not tracking_number:
                 return Response(
                     {"message": "Tracking number is missing."},
@@ -904,7 +923,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             order = Order.objects.filter(tracking_number=tracking_number).first()
             self._failed_sms(order)
-            
+
             if not order:
                 return Response(
                     {
@@ -943,6 +962,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+
 class PostViewSet(ModelViewSet):
     http_method_names = ["get"]
     queryset = Post.objects.all()
@@ -955,3 +975,12 @@ class CollaborateAndContactUsViewset(ModelViewSet):
     http_method_names = ["get", "post", "put"]
     queryset = Collaborate_Contact.objects.all()
     serializer_class = CollaborateAndContactUsSerializer
+
+
+class CashDiscountPercentViewset(ModelViewSet):
+    http_method_names = [
+        "get",
+    ]
+    queryset = CashDiscountPercent.objects.all()
+    serializer_class = CashDiscountPercentSerializer
+    permission_classes = [permissions.IsAuthenticated]

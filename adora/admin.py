@@ -22,7 +22,7 @@ admin.site.register(OrderProvider)
 admin.site.register(Banner)
 admin.site.register(Post)
 admin.site.register(PostImage)
-
+admin.site.register(CashDiscountPercent)
 
 def get_full_name_or_phone_number(order: Order) -> str:
     user_prfile = order.user.profile
@@ -587,6 +587,7 @@ class FAQAdmin(admin.ModelAdmin):
     @admin.display(description=_("جواب"))
     def get_answer(self,obj):
         return f"{obj.answer[:20]} ..."
+
 
 
 admin.site.register(Comment, CommentAdmin)
