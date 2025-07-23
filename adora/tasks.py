@@ -13,6 +13,29 @@ from adora.models import Order, OrderReceipt
 HEADERS = {"accept": "application/json", "content-type": "application/json"}
 
 
+def consider_walet_balance(order: Order, currency: str = "IRT") ->  int:
+    """
+    This function checks if the user has a wallet balance and want to use it then returns the amount to be paid after deducting the wallet balance.
+    If the wallet balance is greater than or equal to the total price, it returns 0.
+    
+    This function returnt Rial currency amount.
+    If the user does not want to use wallet balance, it returns the total price multiplied by 10 (to convert to Rial).
+    If the user has a wallet balance but it is less than the total price, it returns the total price minus the wallet balance.
+    
+    args:
+        - currency [IRI, TOMAN]. default=IRI
+    """
+    currency = 10 if currency == "IRT" else 1
+    if not order.use_wallet_balance:
+        return int(order.total_price * currency)
+    
+    if order.user.profile.wallet_balance >= order.total_price:
+        return 0
+    else:
+        return int(order.total_price - order.user.profile.wallet_balance) * currency
+
+
+
 @shared_task
 def send_zarin_payment_information(order:Order):
     try:
@@ -22,7 +45,7 @@ def send_zarin_payment_information(order:Order):
         zarin_callback_url = os.environ.get("ZARINT_CALLBACK_URL")
         payment_data = {
             "merchant_id": merchant_id,
-            "amount": int(order.total_price),
+            "amount": consider_walet_balance(order, "TOMAN"),
             "currency": "IRT",
             "description": "خرید از آدورا یدک",
             "callback_url": zarin_callback_url,
@@ -64,28 +87,6 @@ def send_zarin_payment_information(order:Order):
         return None
 
 
-# [
-# {
-# "cart_id": str,
-# "total_amount": int,
-# "tax_amount": int,
-# "shipping_amount": int,
-# "is_tax_included": bool,
-# "is_shipment_included": bool,
-# "cartItems": [
-# {
-# "item_id": str,
-# "name": str,
-# "count": int,
-# "amount": int,
-# "category": str,
-# "comission_type": str
-# }
-# ]
-# }
-# ]
-
-
 def get_torobpay_access_token() -> Optional[str]: 
     try:
         header = {
@@ -122,6 +123,7 @@ def get_torobpay_access_token() -> Optional[str]:
         # return e
 
 
+
 @shared_task
 def send_torobpay_payment_information(order: Order, torob_access_token:str):
     try:
@@ -141,16 +143,17 @@ def send_torobpay_payment_information(order: Order, torob_access_token:str):
             "content-type": "application/json",
             "Authorization": f"Bearer {access_token}"
                 }
-
+        
         payment_data = {
-            "amount": int(order.total_price) * 10,
+            "mobile": str(order.user.phone_number).replace("+98", "0"),
+            "amount": consider_walet_balance(order),
             "paymentMethodTypeDto": "CREDIT_ONLINE",
             "returnURL": os.getenv("TOROBPAY_RETURN_TO_THIS_URL"),
             "transactionId": order.tracking_number,
             "cartList": [
                 {
                     "cartId": order.tracking_number,
-                    "totalAmount": int(order.total_price) * 10,
+                    "totalAmount": consider_walet_balance(order),
                     # "tax_amount": order.receipt.fee if order.receipt else 0,
                     "shippingAmount": int(order.delivery_cost) * 10,
                     "isTaxIncluded": bool(os.getenv("TOROBPAY_IS_TAX_INCLUDE")),
@@ -202,7 +205,7 @@ def send_torobpay_payment_information(order: Order, torob_access_token:str):
     except ConnectionError as e:
         print(f"There is a problem to connecct to Torob Pay to get payment token ")
         print(e)
-        order_receipt = str(e)
+        order_receipt.torob_error_message = str(e)
         order_receipt.save()
 
     except Exception as e:

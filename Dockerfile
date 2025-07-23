@@ -1,7 +1,7 @@
 # Dockerfile
 
 # Use the official Python image as a base image
-FROM python:3.11.4-slim-buster
+FROM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1

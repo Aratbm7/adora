@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import time
 import traceback
 from urllib import request
@@ -471,30 +470,26 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
 
     @action(
-        detail=False,
-        methods=["get"],
-        url_path="zarinpal-payment-verification",
-        permission_classes=[permissions.IsAuthenticated],
+    detail=False,
+    methods=["get"],
+    # url_path="zarinpal-payment-verification",
+    url_path="zarinpal-payment-verified",
+    permission_classes=[permissions.IsAuthenticated],
     )
-    def zarinpal_payment_verified(
-        self,
-        request: Request,
-    ):
-        # try:
+    def zarinpal_payment_verified(self, request: Request):
+        order_receipt = None
+
         payment_status = request.query_params.get("payment_status", "")
         authority = request.query_params.get("authority", "")
         tracking_number = request.query_params.get("tracking_number")
 
         if not authority or not tracking_number or not payment_status:
             return Response(
-                {
-                    "message": "Missing required parameters: payment status or authority and/or tracking_number."
-                },
+                {"message": "Missing required parameters: payment_status, authority, or tracking_number."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         order = Order.objects.filter(tracking_number=tracking_number).first()
-
         if not order:
             return Response(
                 {"message": f"No order found with tracking number {tracking_number}."},
@@ -502,77 +497,68 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
 
         order_receipt = order.receipt
-
         if not order_receipt:
             return Response(
                 {"message": "No order receipt found for this order."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        order_authority = order_receipt.authority
-
-        if order_authority != authority:
+        if order_receipt.authority != authority:
             return Response(
-                {"message": f"Invalid authority {authority} for this order."},
-                status=status.HTTP_404_NOT_FOUND,
+                {"message": f"Invalid authority: {authority} does not match this order."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if payment_status == "OK":
             try:
-                zarin_verify_url = os.environ.get("ZARIN_VERIFY_URL")
-                verify_res = requests.post(
+                zarin_verify_url = os.getenv("ZARIN_VERIFY_URL")
+                verify_payload = {
+                    "merchant_id": os.getenv("ZARIN_MERCHANT_ID"),
+                    "amount": int(order.total_price),
+                    "authority": authority,
+                }
+
+                verify_response = requests.post(
                     zarin_verify_url,
-                    headers={
-                        "accept": "application/json",
-                        "content-type": "application/json",
-                    },
-                    data=json.dumps(
-                        {
-                            "merchant_id": os.environ.get("ZARIN_MERCHANT_ID"),
-                            "amount": int(order.total_price),
-                            # "amount":1200,
-                            "authority": order_authority,
-                        }
-                    ),
+                    headers={"accept": "application/json", "content-type": "application/json"},
+                    data=json.dumps(verify_payload),
                 )
 
-                verify_res_json = verify_res.json()
-            except ConnectionError:
+                if verify_response.status_code != 200:
+                    return Response(
+                        {"message": "Zarinpal server returned error", "status": verify_response.status_code},
+                        status=status.HTTP_502_BAD_GATEWAY,
+                    )
+
+                verify_json = verify_response.json()
+
+            except requests.exceptions.RequestException as e:
                 return Response(
-                    {"message": "Connection error Try again"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    {"message": f"Connection error: {str(e)}"},
+                    status=status.HTTP_502_BAD_GATEWAY,
                 )
-            except Exception:
+            except Exception as e:
                 return Response(
-                    {"message": "Server side error Try again"},
+                    {"message": f"Unexpected server error: {str(e)}"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
-            if verify_res.status_code == 200:
-                verfiy_data = verify_res_json.get("data", {})
-
-                card_hash = verfiy_data.get("card_hash")
-                card_pan = verfiy_data.get("card_pan")
-                ref_id = verfiy_data.get("ref_id")
-                fee_type = verfiy_data.get("fee_type")
-                code = verfiy_data.get("code")
-                message = verfiy_data.get("message")
-
-                order_receipt.card_hash = verfiy_data.get("card_hash")
-                order_receipt.ref_id = verfiy_data.get("ref_id")
-                order_receipt.fee_type = verfiy_data.get("fee_type")
-                order_receipt.card_pan = verfiy_data.get("card_pan")
-                order_receipt.verify_code = verfiy_data.get("code")
+            if "data" in verify_json:
+                data = verify_json["data"]
+                order_receipt.card_hash = data.get("card_hash")
+                order_receipt.card_pan = data.get("card_pan")
+                order_receipt.ref_id = data.get("ref_id")
+                order_receipt.fee_type = data.get("fee_type")
+                order_receipt.verify_code = data.get("code")
                 order_receipt.save()
 
-                # Update user wallet_balance
+                # واریز پاداش به کیف پول کاربر
+                profile = order.user.profile
                 if order.use_wallet_balance:
-                    order.user.profile.wallet_balance = order.order_reward
-                    order.user.profile.save()
-
+                    profile.wallet_balance = order.order_reward
                 else:
-                    order.user.profile.wallet_balance += order.order_reward
-                    order.user.profile.save()
+                    profile.wallet_balance += order.order_reward
+                profile.save()
 
                 order.payment_status = "C"
                 order.save()
@@ -580,35 +566,42 @@ class OrderViewSet(viewsets.ModelViewSet):
 
                 return Response(
                     {
-                        "message": message,
-                        "code": code,
-                        "fee_type": fee_type,
-                        "ref_id": ref_id,
-                        "card_pan": card_pan,
-                        "card_hash": card_hash,
+                        "message": data.get("message"),
+                        "code": data.get("code"),
+                        "fee_type": data.get("fee_type"),
+                        "ref_id": data.get("ref_id"),
+                        "card_pan": data.get("card_pan"),
+                        "card_hash": data.get("card_hash"),
                     },
                     status=status.HTTP_200_OK,
                 )
 
-            else:
-                verify_data = verify_res_json.get("errors", {})
-
-                verify_code = verify_data.get("code")
-                message = verify_data.get("message")
-                order_receipt.verify_code = verify_code
-                order_receipt.error_msg = message
+            elif "errors" in verify_json:
+                errors = verify_json["errors"]
+                order_receipt.verify_code = errors.get("code")
+                order_receipt.error_msg = errors.get("message")
                 order_receipt.save()
+
                 order.payment_status = "F"
                 order.save()
                 self._failed_sms(order)
 
-            return Response(
-                {"message": message, "code": verify_code}, status=verify_res.status_code
-            )
+                return Response(
+                    {
+                        "message": errors.get("message", "Verification failed"),
+                        "code": errors.get("code", "N/A"),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            else:
+                return Response(
+                    {"message": "Unexpected response from Zarinpal.", "response": verify_json},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
 
         elif payment_status == "NOK":
-
-            order_receipt.error_msg = "NOK"
+            order_receipt.error_msg = "Payment canceled by user."
             order_receipt.save()
             order.payment_status = "F"
             order.save()
@@ -621,74 +614,63 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         else:
             return Response(
-                {
-                    "message": 'Invalid value for payment_status parameter. Must be "OK" or "NOK".'
-                },
-                status=status.HTTP_200_OK,
+                {"message": "Invalid value for payment_status. Must be 'OK' or 'NOK'."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
     @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter(
-                "access_token",
-                openapi.IN_QUERY,
-                description="The Torob Pay access token.",
-                type=openapi.TYPE_STRING,
-                # default="ALFDJKNALDSJKAJSD;IFJAISFUAJLKFJAOSDF.ASDFHALDFAS=="
-            ),
-            openapi.Parameter(
-                "tracking_number",
-                openapi.IN_QUERY,
-                description="Order tracking number.",
-                type=openapi.TYPE_STRING,
-                # default="ADO_ALASDKFJALDLA"
-            ),
-        ],
-        responses={200: "OK", 400: "Bad Request"},
-    )
+    manual_parameters=[
+        openapi.Parameter(
+            "access_token",
+            openapi.IN_QUERY,
+            description="The Torob Pay access token.",
+            type=openapi.TYPE_STRING,
+        ),
+        openapi.Parameter(
+            "tracking_number",
+            openapi.IN_QUERY,
+            description="Order tracking number.",
+            type=openapi.TYPE_STRING,
+        ),
+    ],
+    responses={200: "OK", 400: "Bad Request"},
+)
     @action(
         detail=False,
         methods=["get"],
         url_path="torobpay-payment-verification",
-        # permission_classes=[permissions.IsAuthenticated],
-        permission_classes=[permissions.AllowAny],
+        permission_classes=[permissions.IsAuthenticated],
     )
     def torobpay_payment_verify(self, request: Request):
+        order_receipt = None  # برای جلوگیری از ارور در except
         try:
             TOROBPAY_BASE_URL = os.getenv("TOROBPAY_BASE_URL")
             TOROBPAY_PAYMENT_VERIFY = os.getenv("TOROBPAY_PAYMENT_VERIFY")
             TOROBPAY_PAYMENT_SETTLE = os.getenv("TOROBPAY_PAYMENT_SETTLE")
-            access_token = request.query_params.get("torob_access_token", "")
 
+            access_token = request.query_params.get("torob_access_token", "")
             tracking_number = request.query_params.get("tracking_number", "")
 
             if not tracking_number or not access_token:
                 return Response(
-                    {
-                        "message": "Missing required parameters {tracking_number} or {torob_access_token}"
-                    },
+                    {"message": "Missing required parameters: tracking_number or torob_access_token"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             order = Order.objects.filter(tracking_number=tracking_number).first()
-
             if not order:
                 return Response(
-                    {
-                        "message": f"No order found with tracking number {tracking_number}."
-                    },
+                    {"message": f"No order found with tracking number {tracking_number}."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            payment_token = order.torob_payment_token
-            if not payment_token:
+            if not order.torob_payment_token:
                 return Response(
-                    {"message": f"No order payment token found"},
+                    {"message": "No order payment token found."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            order_receipt: OrderReceipt = order.receipt
-
+            order_receipt = order.receipt
             if not order_receipt:
                 return Response(
                     {"message": "No order receipt found for this order."},
@@ -696,115 +678,97 @@ class OrderViewSet(viewsets.ModelViewSet):
                 )
 
             header = {
-                "content-type": "application/json",
+                "Content-Type": "application/json",
                 "Authorization": f"Bearer {access_token}",
             }
 
-            res = requests.post(
+            # Step 1: Verify payment
+            verify_response = requests.post(
                 url=f"{TOROBPAY_BASE_URL}/{TOROBPAY_PAYMENT_VERIFY}",
                 headers=header,
-                data=json.dumps({"paymentToken": payment_token}),
+                data=json.dumps({"paymentToken": order.torob_payment_token}),
             )
-            res_dict = res.json()
-            if res_dict.get("successful", False):
-                print(f"Payment Token successfully is taked")
-                transaction_id = res_dict.get("response", {}).get("transactionId", "")
-                print("transactionId : ", transaction_id)
+            verify_data = verify_response.json()
+
+            if verify_data.get("successful"):
+                print("Payment verification successful")
+                transaction_id = verify_data.get("response", {}).get("transactionId", "")
                 order_receipt.torob_transaction_id = transaction_id
                 order_receipt.save()
 
-                res_settle = requests.post(
+                # Step 2: Settle payment
+                settle_response = requests.post(
                     url=f"{TOROBPAY_BASE_URL}/{TOROBPAY_PAYMENT_SETTLE}",
                     headers=header,
-                    data=json.dumps({"paymentToken": payment_token}),
+                    data=json.dumps({"paymentToken": order.torob_payment_token}),
                 )
-                res_dict_settle = res_settle.json()
-                if res_dict_settle.get("successful", False):
+                settle_data = settle_response.json()
 
-                    # Send successful message to the user
+                if settle_data.get("successful"):
                     order.payment_status = "C"
                     order.save()
-
-                    # Send Successfull sms
                     self._success_sms(order)
-
                     return Response(
                         {
-                            "message:": "Successfully verified and settled payment.",
-                            "response": res_dict_settle.get("response", {}),
+                            "message": "Successfully verified and settled payment.",
+                            "response": settle_data.get("response", {}),
                         },
                         status=status.HTTP_200_OK,
                     )
-
                 else:
-                    error_message = res_dict_settle.get("errorData", {}).get(
-                        "message", "Unknown error"
-                    )
-                    error_code = res_dict_settle.get("errorData", {}).get(
-                        "errorCode", "Unknown code"
-                    )
+                    error_message = settle_data.get("errorData", {}).get("message", "Unknown error")
+                    error_code = settle_data.get("errorData", {}).get("errorCode", "Unknown code")
                     order_receipt.torob_error_message = error_message
                     order_receipt.torob_error_code = error_code
                     order_receipt.save()
-
-                    # Save order payment status.
                     order.payment_status = "F"
                     order.save()
-
-                    # Send failed sms to user
                     self._failed_sms(order)
-
                     return Response(
                         {
-                            "message": "Payment Sttlement failed",
-                            "TrobPayRrror": res_dict_settle.get("errorData", {}),
+                            "message": "Payment settlement failed.",
+                            "TorobPayError": settle_data.get("errorData", {}),
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+
             else:
-                error_message = res_dict.get("errorData", {}).get(
-                    "message", "Unknown error"
-                )
-                error_code = res_dict.get("errorData", {}).get(
-                    "errorCode", "Unknown error"
-                )
+                error_message = verify_data.get("errorData", {}).get("message", "Unknown error")
+                error_code = verify_data.get("errorData", {}).get("errorCode", "Unknown code")
                 order_receipt.torob_error_message = error_message
                 order_receipt.torob_error_code = error_code
                 order_receipt.save()
-
-                # Save order payment status.
                 order.payment_status = "F"
                 order.save()
-
-                # Send failed sms to user
                 self._failed_sms(order)
-
                 return Response(
                     {
-                        "message": "Payment verification failed in Verification step",
-                        "TrobPayRrror": res_dict.get("errorData", {}),
+                        "message": "Payment verification failed.",
+                        "TorobPayError": verify_data.get("errorData", {}),
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+        except requests.exceptions.RequestException as e:
+            error_message = f"Connection error: {str(e)}"
+            print(error_message)
+            if order_receipt:
+                order_receipt.torob_error_message = error_message
+                order_receipt.save()
+            return Response({"message": error_message}, status=status.HTTP_400_BAD_REQUEST)
+
         except Exception:
-            error_message = str(traceback.format_exc())
-            order_receipt.torob_error_message = error_message
-            order_receipt.save()
+            error_message = traceback.format_exc()
             print(error_message)
+            if order_receipt:
+                order_receipt.torob_error_message = error_message
+                order_receipt.save()
             return Response(
-                {"message": f"An unexpected error!!"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        except ConnectionError:
-            error_message = str(traceback.format_exc())
-            print(error_message)
-            order_receipt.torob_error_message = error_message
-            order_receipt.save()
-            return Response(
-                {"message": f"An Connection error!!"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"message": "An unexpected error occurred.", "trace": error_message},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    
     @action(
         detail=False,
         methods=["get"],
@@ -983,4 +947,4 @@ class CashDiscountPercentViewset(ModelViewSet):
     ]
     queryset = CashDiscountPercent.objects.all()
     serializer_class = CashDiscountPercentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
