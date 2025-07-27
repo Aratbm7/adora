@@ -1,5 +1,6 @@
 from datetime import datetime
 from jalali_date import datetime2jalali
+from persian_tools import digits
 
 
 def show_date_time(date_time: datetime) -> str:
@@ -23,5 +24,5 @@ def show_date_time(date_time: datetime) -> str:
         day = jalali_date.day
         month = persian_months[jalali_date.month - 1]  # چون لیست از ایندکس 0 شروع می‌شود
         year = jalali_date.year
-        return f"{day} {month} {year} ({time})"
+        return digits.convert_to_fa(f"{day} {month} {year} ({time})")
     return "-"

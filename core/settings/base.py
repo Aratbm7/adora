@@ -41,7 +41,8 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "drf_yasg",
     "django_filters",
-    "account.apps.AccountConfig",
+    # "account.apps.AccountConfig",
+    "account",
     "adora",
 ]
 
@@ -63,7 +64,7 @@ ROOT_URLCONF = 'core.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'templates'),],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -248,4 +249,15 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:8000",
     "https://adorayadak.ir",
     "https://api.adorayadak.ir",  
+]
+
+ALLOWED_SMS_CAMPAIGN_PARAM_PATHS = [
+    ("profile.get_first_name", "نام"),
+    ("profile.get_last_name", "نام خانوادگی"),
+    ("profile.get_full_name", "نام کامل"),
+    ("user.phone_number_with_zero", "شماره موبایل"),
+    ("profile.wallet_balance", "اعتبار کیف پول"),
+    ("campaign.start_datetime", "تاریخ شروع کمپین"),
+    ("campaign.end_datetime", "تاریخ پایان کمپین"),
+    ("campaign.name", "نام کمپین"),
 ]

@@ -1,14 +1,14 @@
+from decimal import Decimal
 import random
 import string
-from importlib.util import module_from_spec
-from tabnanny import verbose
+from datetime import timezone
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils.translation import gettext as _
-
-# from django.contrib.auth import get_user_model
 from phonenumber_field.modelfields import PhoneNumberField
+
 
 # Create your models here.
 class Date(models.Model):
@@ -43,17 +43,20 @@ class Category(Date):
         hierarchy = []
         category = self
         while category:
-            hierarchy.insert(0, {
-                'id': category.id,
-                'name': category.name,
-            })
+            hierarchy.insert(
+                0,
+                {
+                    "id": category.id,
+                    "name": category.name,
+                },
+            )
             category = category.parent
-            
+
         for index, item in enumerate(hierarchy):
-            item['category_level'] = index + 1
- 
- 
+            item["category_level"] = index + 1
+
         return hierarchy
+
     class Meta:
         verbose_name = _("دسته بندی")
         verbose_name_plural = _("دسته بندی کل")
@@ -157,7 +160,7 @@ class FAQ(models.Model):
 
     def __str__(self):
         return f"{self.question[:20]} ..."
-    
+
     class Meta:
         verbose_name = _("پرسش محصولات")
         verbose_name_plural = _("پرسش های محصولات")
@@ -190,27 +193,23 @@ class Product(Date):
         help_text=_("مدت زمان به ماه وارد شود"),
     )
     new = models.BooleanField(default=False, verbose_name="محصول جدید")
-    
+
     SIZE_MINI = "1"
     SIZE_SMALL = "2"
     SIZE_MEDIUM = "3"
     SIZE_LARGE = "4"
-    
-    
+
     SIZE_CHOICES = [
         (SIZE_MINI, _("مینی")),
         (SIZE_SMALL, _("کوچک")),
-        (SIZE_MEDIUM,_("معمولی")),
+        (SIZE_MEDIUM, _("معمولی")),
         (SIZE_LARGE, _("بزرگ")),
     ]
 
     size = models.CharField(
-        max_length=1, 
-        choices=SIZE_CHOICES, 
-        default=SIZE_MINI, 
-        verbose_name="سایز"
+        max_length=1, choices=SIZE_CHOICES, default=SIZE_MINI, verbose_name="سایز"
     )
-    
+
     buyer = models.PositiveIntegerField(default=0, verbose_name=_("تعداد خریدار"))
     customer_point = models.PositiveIntegerField(
         default=0, verbose_name=_("درصد رضایت خریداران")
@@ -255,9 +254,8 @@ class Product(Date):
     compatible_cars = models.ManyToManyField(
         Car, blank=True, related_name="products", verbose_name=_("مناسب خودرو های")
     )
-    
-    faqs = models.ManyToManyField(FAQ, blank=True, verbose_name="سوالات متداول اختصاصی")
 
+    faqs = models.ManyToManyField(FAQ, blank=True, verbose_name="سوالات متداول اختصاصی")
 
     def get_all_faqs(self):
         """
@@ -274,16 +272,20 @@ class Product(Date):
     def __str__(self):
         return self.fa_name
 
+
 class CashDiscountPercent(models.Model):
-    zarinpal_discount_percent = models.PositiveIntegerField(default=0, verbose_name=_("درصد تخفیف زرین پال")) 
+    zarinpal_discount_percent = models.PositiveIntegerField(
+        default=0, verbose_name=_("درصد تخفیف زرین پال")
+    )
 
     class Meta:
         verbose_name = _("درصد تخفیف خرید نقد")
         verbose_name_plural = _("درصد تخفیف خرید نقد")
-    
+
     def __str__(self):
         return f"{self.zarinpal_discount_percent}%"
-    
+
+
 class Order(Date):
     NO_ANY_ACTION = "N"
     PENDING_STATUS = "P"
@@ -412,9 +414,18 @@ class Order(Date):
         verbose_name=_("انتخاب گیرنده"),
     )
 
-    torob_payment_token = models.CharField(null=True,blank=True, max_length=200, verbose_name=_("توکن پرداخت ترب پی"),
-                                           help_text=_("توکن پرداخت ترب پی فقط موقعی ساخته میشود که پرداخت با ترب پی انجام شود وگرنه خالی باید باشد."))
-    torob_payment_page_url = models.CharField(null=True, blank=True, max_length=200, verbose_name=("صفحه پرداخت ترب پی"))
+    torob_payment_token = models.CharField(
+        null=True,
+        blank=True,
+        max_length=200,
+        verbose_name=_("توکن پرداخت ترب پی"),
+        help_text=_(
+            "توکن پرداخت ترب پی فقط موقعی ساخته میشود که پرداخت با ترب پی انجام شود وگرنه خالی باید باشد."
+        ),
+    )
+    torob_payment_page_url = models.CharField(
+        null=True, blank=True, max_length=200, verbose_name=("صفحه پرداخت ترب پی")
+    )
     RETURNED_ASK = "RA"
     RETURNED_CONFIRMED = "RC"
     RETURNED_REJECTED = "RR"
@@ -470,7 +481,7 @@ class Order(Date):
     def save(self, *args, **kwargs):
         if not self.tracking_number:
             self.tracking_number = self.generate_unique_tracking_number()
-            
+
         # # super().save(*args, **kwargs)
         # self.calculate_total_price()
 
@@ -504,7 +515,9 @@ class OrderItem(models.Model):
     )
     quantity = models.PositiveIntegerField(verbose_name=_("تعداد"))
 
-    sold_price = models.PositiveBigIntegerField(default=0,verbose_name=" قیمت فروخته شده")
+    sold_price = models.PositiveBigIntegerField(
+        default=0, verbose_name=" قیمت فروخته شده"
+    )
 
     def _get_discounted_price(self):
         return self.product.price * (1 - (self.product.price_discount_percent / 100))
@@ -516,9 +529,9 @@ class OrderItem(models.Model):
         return (
             (self.product.price * self.product.wallet_discount) / 100
         ) * self.quantity
-    
+
     def save(self, *args, **kwargs):
-    # اگر sold_price هنوز مقدار نداشته باشد، آن را تنظیم کن
+        # اگر sold_price هنوز مقدار نداشته باشد، آن را تنظیم کن
         if not self.sold_price:
             self.sold_price = round(self._get_discounted_price())  # گرد کردن قیمت نهایی
 
@@ -533,7 +546,7 @@ class OrderItem(models.Model):
 
 
 class OrderReceipt(Date):
-    
+
     # ZarinPal status
     authority = models.CharField(max_length=36, null=True, blank=True)
     request_code = models.IntegerField(
@@ -550,20 +563,20 @@ class OrderReceipt(Date):
     card_hash = models.CharField(max_length=500, null=True, blank=True)
     card_pan = models.CharField(max_length=16, null=True, blank=True)
     connection_error = models.BooleanField(default=False)
-    
+
     # Torob pay status
-    # Successful: 
+    # Successful:
     torob_reciept = models.BooleanField(default=False)
-    torob_transaction_id = models.CharField(null=True,blank=True, max_length=200)
-    
+    torob_transaction_id = models.CharField(null=True, blank=True, max_length=200)
+
     # Failed
-    torob_error_message = models.TextField(null=True,blank=True)
-    torob_error_code = models.CharField(null=True,blank=True, max_length=10)
+    torob_error_message = models.TextField(null=True, blank=True)
+    torob_error_code = models.CharField(null=True, blank=True, max_length=10)
 
     order = models.OneToOneField(
         Order, on_delete=models.PROTECT, related_name="receipt"
     )
-    
+
     class Meta:
         verbose_name = _("رسید")
         verbose_name_plural = _("رسید ها")
@@ -573,7 +586,8 @@ class OrderReceipt(Date):
             return f"Zarin Pal:{self.authority[:3]}j ... {self.authority[-10:]}"
         elif self and self.torob_reciept:
             return "Torob Pay"
-        return '-'
+        return "-"
+
 
 class OrderProvider(models.Model):
     name = models.CharField(max_length=100)
@@ -584,6 +598,7 @@ class OrderProvider(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class Banner(models.Model):
     where = models.CharField(max_length=100)
@@ -692,3 +707,174 @@ class Collaborate_Contact(Date):
 
     def __str__(self):
         return self.full_name
+
+
+class SMSCampaign(Date):
+    name = models.CharField(max_length=500, verbose_name=_("نام کمپین پیامکی"))
+    sms_template_id = models.CharField(
+        max_length=100,
+        verbose_name=_("کد قالب پیامک"),
+        help_text="کد قالب پیامک در سامانه ملی پیامک",
+    )
+    start_datetime = models.DateTimeField(verbose_name=_("تاریخ شروع کمپین"))
+    end_datetime = models.DateTimeField(verbose_name=_("تاریخ پایان کمپین"))
+    is_active = models.BooleanField(default=True, verbose_name=_("فعال"))
+    max_send_count = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = _("کمپین تبلیغات پیامکی")
+        verbose_name_plural = _("کمپین های تبلیغات پیامکی")
+
+    def is_running(self):
+        now = timezone.now()
+        return self.is_active and self.start_datetime <= now <= self.end_datetime
+
+    def __str__(self):
+        return self.name
+
+
+class SMSCampaignParam(Date):
+    campaign = models.ForeignKey(
+        "SMSCampaign",
+        related_name="params",
+        on_delete=models.CASCADE,
+        verbose_name=_("کپین پیامکی"),
+    )
+
+    value_source = models.CharField(
+        null=True,
+        blank=True,
+        max_length=255,
+        choices=settings.ALLOWED_SMS_CAMPAIGN_PARAM_PATHS,
+        verbose_name=_("مسیر پارامتر ورودی پیامک"),
+        help_text=_("مسیری که مقدار از آن گرفته می‌شود. فقط مسیرهای مجاز, مجاز هستند."),
+    )
+
+    is_static = models.BooleanField(
+        default=False,
+        verbose_name=_("مقدار ثابت است"),
+        help_text=_("اگر این گزینه فعال باشد، مقدار به‌صورت دستی وارد می‌شود."),
+    )
+
+    static_value = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name=_("مقدار ثابت"),
+        help_text=_("در صورتی که مقدار ثابت است، اینجا مقدار را وارد کنید."),
+    )
+
+    position = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_("ترتیب پارامتر"),
+        help_text=_("ترتیب قرارگیری پارامتر در پیامک (۰، ۱، ۲، ...)"),
+    )
+
+    class Meta:
+        ordering = ["position"]
+        verbose_name = _("پارامتر کمپین تبلیغات پیامکی")
+        verbose_name_plural = _("پارامتر های کمپین های تبلیغات پیامکی")
+
+    def resolve_value(self, user, profile=None, campaign=None):
+        """
+        مقدار نهایی پارامتر را از مسیر تعیین‌شده استخراج می‌کند یا مقدار ثابت را برمی‌گرداند.
+        """
+        if self.is_static:
+            return self.static_value or ""
+
+        if not self.is_allowed_path(self.value_source):
+            return ""
+
+        base, *rest = self.value_source.split(".", 1)
+        path = rest[0] if rest else ""
+
+        
+        profile = profile or getattr(user, "profile", None)
+
+        context = {
+            "user": user,
+            "profile": profile,
+            "campaign": campaign or  self.campaign,
+        }
+
+        obj = context.get(base)
+
+        print("value_source:", self.value_source)
+        print("base:", base)
+        print("path:", path)
+        print("obj from context:", obj)
+        if not obj:
+            return ""
+
+        return self.get_nested_attr(obj, path)
+
+    @staticmethod
+    def is_allowed_path(path: str) -> bool:
+        """
+        بررسی می‌کند که مسیر در لیست مجاز هست یا نه.
+        """
+        return path in dict(settings.ALLOWED_SMS_CAMPAIGN_PARAM_PATHS)
+
+    @staticmethod
+    def get_nested_attr(obj, attr_path: str):
+        """
+        دریافت مقدار نهایی از یک مسیر تو در تو مانند: profile.wallet_balance
+        """
+        try:
+            for part in attr_path.split("."):
+                obj = getattr(obj, part, None)
+                if obj is None:
+                    return ""
+                try:
+                    if callable(obj):
+                        obj = obj()
+                        print("objj", obj)
+                        print(">>> attr_path:", attr_path)
+                        print(">>> final value:", obj)
+                    return obj 
+                except Exception:
+                    return ""
+        
+        except Exception:
+            return ""
+
+    # def __str__(self):
+    #     return f"{self.campaign.name} - {self.key}"
+    def __str__(self):
+        if not self.is_static:
+        # نمایش نام خوانا از لیست انتخابی
+            label = dict(settings.ALLOWED_SMS_CAMPAIGN_PARAM_PATHS).get(
+                self.value_source, self.value_source
+            )
+            return f"{self.campaign.name} - {label} - position: {self.position}"
+
+        return f"{self.campaign.name} - {self.static_value} - position: {self.position}"
+class SMSCampaignSendLog(models.Model):
+    campaign = models.ForeignKey(
+        SMSCampaign, on_delete=models.CASCADE, verbose_name=_("کمپین پیامکی")
+    )
+
+    user = models.ForeignKey(
+        get_user_model(), on_delete=models.CASCADE, verbose_name=_("کاربر")
+    )
+
+    message_args = models.TextField(
+        _("آرگومان‌های ارسالی به پیامک"), blank=True, null=True
+    )
+
+    is_successful = models.BooleanField(_("ارسال موفق"), default=False)
+
+    response_message = models.CharField(
+        _("پاسخ دریافتی از سرویس پیامکی"), max_length=500, blank=True, null=True
+    )
+
+    status_code = models.IntegerField(_("کد وضعیت HTTP"), default=0)
+
+    sent_at = models.DateTimeField(auto_now_add=True, verbose_name=_("تاریخ ارسال"))
+
+    class Meta:
+        verbose_name = _("لاگ ارسال پیامک کمپین")
+        verbose_name_plural = _("لاگ‌های ارسال پیامک کمپین‌ها")
+
+    def __str__(self):
+        return f"{self.user} - {'موفق' if self.is_successful else 'ناموفق'}"

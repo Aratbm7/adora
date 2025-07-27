@@ -6,9 +6,13 @@ from typing import List, Dict, Optional, Union
 import requests
 from celery import shared_task
 from requests.exceptions import ConnectionError
+from urllib3.exceptions import NameResolutionError
+# from adora.models import SMSCampaign, SMSCampaignSendLog
+# from account.models import User
 
-from account.models import User
+# from account.models import User
 from adora.models import Order, OrderReceipt
+
 
 HEADERS = {"accept": "application/json", "content-type": "application/json"}
 
@@ -33,7 +37,6 @@ def consider_walet_balance(order: Order, currency: str = "IRT") ->  int:
         return 0
     else:
         return int(order.total_price - order.user.profile.wallet_balance) * currency
-
 
 
 @shared_task
@@ -115,13 +118,11 @@ def get_torobpay_access_token() -> Optional[str]:
         print(f"There is a problem to connecct to Torob Pay to get access token \n {aouth_url}")
         print(e)
         # return e
-        
-        
+
     except Exception as e:
         print(f"There is some error on get access token function from Torob Pay")
         print(e)
         # return e
-
 
 
 @shared_task
@@ -143,7 +144,7 @@ def send_torobpay_payment_information(order: Order, torob_access_token:str):
             "content-type": "application/json",
             "Authorization": f"Bearer {access_token}"
                 }
-        
+
         payment_data = {
             "mobile": str(order.user.phone_number).replace("+98", "0"),
             "amount": consider_walet_balance(order),

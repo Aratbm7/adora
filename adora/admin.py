@@ -1,18 +1,20 @@
 import os
 
-from django.contrib import admin
+from admin_auto_filters.filters import AutocompleteFilter
+from django import forms
+from django.conf import settings
+from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.translation import gettext as _
 from jalali_date.admin import ModelAdminJalaliMixin
-from persian_tools import separator
 
 from adora.models import *
 from adora.tasks import send_order_status_message
+from core.utils.separate_and_convert_to_fa import separate_digits_and_convert_to_fa
 from core.utils.show_jalali_datetime import show_date_time
-from admin_auto_filters.filters import AutocompleteFilter
 
-from django.http import StreamingHttpResponse
 admin.site.site_header = "پنل ادمین آدورا یدک"
 admin.site.site_title = "پنل ادمین آدورا یدک"
 admin.site.index_title = " پنل ادمین آدورا یدک"
@@ -24,7 +26,8 @@ admin.site.register(Post)
 admin.site.register(PostImage)
 admin.site.register(CashDiscountPercent)
 
-def get_full_name_or_phone_number(order: Order) -> str:
+
+def get_full_name_or_default_name(order: Order) -> str:
     user_prfile = order.user.profile
     name = user_prfile.first_name or ""
     last_name = user_prfile.last_name or ""
@@ -38,11 +41,13 @@ def get_full_name_or_phone_number(order: Order) -> str:
 
 class UserFilter(AutocompleteFilter):
     title = _("شماره تلفن")
-    field_name = 'user'
+    field_name = "user"
     text_help = _("توجه کنید که شماره با +۹۸ ذخیره شده است.")
+
 
 class OrderItemInline(admin.StackedInline):
     model = OrderItem
+
 
 class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     search_fields = [
@@ -67,9 +72,15 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     search_help_text = _(
         "شما میتواند با   شماره پیگیری و نام و نام خانوادگی پروفایل سفارش را جستجو کنید "
     )
-    list_filter = (UserFilter, "payment_status", "delivery_status", "use_wallet_balance")
+    list_filter = (
+        UserFilter,
+        "payment_status",
+        "delivery_status",
+        "use_wallet_balance",
+    )
 
     inlines = (OrderItemInline,)
+
     def get_excluded_fields(self):
         """Returns fields that should be excluded from 'Order Details'."""
         return {*self.readonly_fields, "id", "created_date", "updated_date"}
@@ -101,13 +112,11 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
 
     @admin.display(description="هزینه کل سفارش (تومان)")
     def get_total_price(self, obj):
-        separate = separator.add(int(obj.total_price))
-        return separate
+        return separate_digits_and_convert_to_fa(obj.total_price)
 
     @admin.display(description="پاداش استفاده شده (تومان)")
     def get_amount_used_wallet_balance(self, obj):
-        separate = separator.add(int(obj.amount_used_wallet_balance))
-        return separate
+        return separate_digits_and_convert_to_fa(obj.amount_used_wallet_balance)
 
     @admin.display(description="رسید")
     def receipt_link(self, obj):
@@ -157,7 +166,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
             previous_obj: Order = self.model.objects.get(pk=obj.pk)
             # Check if `delivery_status` has changed
             # print(previous_obj.delivery_status)
-            full_name = get_full_name_or_phone_number(obj)
+            full_name = get_full_name_or_default_name(obj)
             phone_number = str(obj.user.phone_number).replace("+98", "0")
             order_traking_number = obj.tracking_number
             # print(phone_number)
@@ -230,13 +239,14 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         # Proceed with the default save behavior
         super().save_model(request, obj, form, change)
 
+
 class OrderFilter(AutocompleteFilter):
     titile = _("سفارش")
-    field_name = 'order'
+    field_name = "order"
 
 
 class OrderItemAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
-    list_display = ("order_link", "get_product", "quantity", 'get_sold_price')
+    list_display = ("order_link", "get_product", "quantity", "get_sold_price")
     list_filter = (OrderFilter,)
     search_fields = ("product__fa_name", "product__en_name")
     search_help_text = _("فقط میتوانید با نام فارسی و انگلیسی محصول سرچ کنید.")
@@ -248,13 +258,10 @@ class OrderItemAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
             f"/admin/adora/order/{obj.order.id}/change",
             obj.order.tracking_number,
         )
-        
+
     @admin.display(description="قیمت فروخته شده")
     def get_sold_price(self, obj):
-        return separator.add(
-            int(obj.sold_price)
-        )
-
+        return separate_digits_and_convert_to_fa(obj.sold_price)
 
     @admin.display(description=_("محصول"))
     def get_product(self, obj):
@@ -269,41 +276,40 @@ class OrderItemAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
 
 class CategoryFilter(AutocompleteFilter):
     title = _("دسته بندی")
-    field_name = 'category'
+    field_name = "category"
+
 
 class BrandFilter(AutocompleteFilter):
     title = _("شرکت سازنده")
-    field_name = 'brand'
+    field_name = "brand"
 
 
 class StockFilter(admin.SimpleListFilter):
     title = _("وضعیت موجودی")
-    parameter_name = 'count_in_box'
-    
+    parameter_name = "count_in_box"
+
     def lookups(self, request, model_admin):
-        return [
-            ("in_stock", _("موجود")),
-            ('out_of_stock', _("نا موجود"))
-        ]
-        
+        return [("in_stock", _("موجود")), ("out_of_stock", _("نا موجود"))]
+
     def queryset(self, request, queryset):
-        if self.value() == 'in_stock':
+        if self.value() == "in_stock":
             return queryset.filter(count_in_box__gt=0)
-        
-        if self.value() == 'out_of_stock':
+
+        if self.value() == "out_of_stock":
             return queryset.filter(count_in_box=0)
-        
+
         return queryset
 
 
 class CompatibleCarsFilter(AutocompleteFilter):
     title = _("خودرو مناسب")
-    field_name = 'compatible_cars'
+    field_name = "compatible_cars"
 
 
 class ProductImageInline(admin.StackedInline):
     model = ProductImage
     show_change_link = "__all__"
+
 
 class ProductAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     list_display = (
@@ -326,20 +332,19 @@ class ProductAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         CompatibleCarsFilter,
         "best_seller",
         "new",
-        "size"
+        "size",
     )
     inlines = (ProductImageInline,)
 
-            
     def formfield_for_manytomany(self, db_field, request, **kwargs):
         if db_field.name == "faqs":
             kwargs["queryset"] = FAQ.objects.filter(is_global=False)
         return super().formfield_for_manytomany(db_field, request, **kwargs)
-    
+
     @admin.display(description="قیمت (با تخفیف)")
     def get_price(self, obj):
-        return separator.add(
-            int(obj.price - ((obj.price * obj.price_discount_percent) / 100))
+        return separate_digits_and_convert_to_fa(
+            obj.price - ((obj.price * obj.price_discount_percent) / 100)
         )
 
     @admin.display(description="دسته بندی")
@@ -373,6 +378,7 @@ class ProductAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
             f"/admin/adora/productimage/?product__id__exact={obj.id}",
             "لینک عکس ها",
         )
+
 
 class CategoryAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     list_display = (
@@ -461,7 +467,7 @@ class OrderReceiptAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
 
     @admin.display(description=_("مالیات (تومان)"))
     def get_fee(self, obj):
-        return separator.add(int(obj.fee))
+        return separate_digits_and_convert_to_fa(obj.fee)
 
     @admin.display(description="Authority")
     def get_authority(self, obj):
@@ -510,6 +516,8 @@ class OrderReceiptAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                 },
             ),
         )
+
+
 class ProductImageAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     list_display = ("alt", "get_image", "get_same_images")
     search_fields = ("alt", "product__en_name")
@@ -574,21 +582,142 @@ class CommentAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     def get_updated_date(self, obj):
         return show_date_time(obj.updated_date)
 
+
 class FAQAdmin(admin.ModelAdmin):
-    list_display = ('get_question', 'get_answer', 'is_global')
-    list_filter = ('is_global',)
-    search_fields = ('question',)
+    list_display = ("get_question", "get_answer", "is_global")
+    list_filter = ("is_global",)
+    search_fields = ("question",)
     search_help_text = _("میتوانید با سوال سرچ کنید")
-    
+
     @admin.display(description=_("سوال"))
-    def get_question(self,obj):
+    def get_question(self, obj):
         return f"{obj.question[:20]} ..."
- 
+
     @admin.display(description=_("جواب"))
-    def get_answer(self,obj):
+    def get_answer(self, obj):
         return f"{obj.answer[:20]} ..."
 
 
+class SMSCampaignParamForm(forms.ModelForm):
+    class Meta:
+        model = SMSCampaignParam
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        is_static = cleaned_data.get("is_static")
+        value_source = cleaned_data.get("value_source")
+        static_value = cleaned_data.get("static_value")
+
+        if is_static and value_source:
+            raise ValidationError(
+                "اگر تیک فیلد (مقدار ثابت) باشد باید فیلد (مسیر پارامتر ورودی پیامک) خالی باشد و برعکس."
+            )
+
+        if is_static and not static_value:
+            raise ValidationError(
+                "اگر تیک فیلد (مقدار ثابت) فعال باشد باید مقدار ثابت نیز خالی نباشد."
+            )
+
+        if not is_static and not value_source:
+            raise ValidationError("اگر مقدار ثابت نیست باید مسیر پارامتر وارد شود.")
+
+        return cleaned_data
+
+
+class SMSCampaignFilter(AutocompleteFilter):
+    title = _("کمپین")
+    field_name = "campaign"
+
+
+class UserFilter(AutocompleteFilter):
+    title = _("کاربر")
+    field_name = "user"
+
+
+class SMSCampaignParamAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
+    form = SMSCampaignParamForm
+    list_display = ("get_param_value", "get_campaign_name", "position")
+    list_filter = (SMSCampaignFilter,)
+
+    @admin.display(description=_("مقدار پارامتر"))
+    def get_param_value(self, obj: SMSCampaignParam) -> str:
+        if obj.value_source:
+            return dict(settings.ALLOWED_SMS_CAMPAIGN_PARAM_PATHS).get(
+                obj.value_source, obj.value_source
+            )
+        return f"مقدار ثابت :‌ {obj.static_value}"
+
+    @admin.display(description=_("نام کمپین"))
+    def get_campaign_name(self, obj: SMSCampaignParam) -> str:
+        return format_html(
+            '<a href="{}">{}</a>',
+            f"/admin/adora/smscampaign/{obj.campaign.id}/change",
+            obj.campaign.name,
+        )
+
+
+class SMSCampaignParamInline(admin.StackedInline):
+    model = SMSCampaignParam
+    show_change_link = "__all__"
+
+
+class SMSCampaignAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
+    list_display = ("name", "sms_template_id", "is_active", "get_params")
+    inlines = (SMSCampaignParamInline,)
+    search_fields = ("name",)
+    list_filter = ("name", "is_active")
+
+    @admin.display(description=_("پارامتر های کمپین"))
+    def get_params(self, obj: SMSCampaign):
+        return format_html(
+            '<a target=_blank href="{}">{}</a>',
+            f"/admin/adora/smscampaignparam/?campaign__id__exact={obj.id}",
+            "لینک پارامتر ها ",
+        )
+
+
+class SMSCampaignSendLogAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
+    list_display = (
+        "get_args",
+        "get_campaign",
+        "get_user",
+        "status_code",
+        "response_message",
+        "get_sent_at",
+        "is_successful",
+    )
+    list_filter = (SMSCampaignFilter, UserFilter, "is_successful", "sent_at")
+
+    @admin.display(description=_("تاریخ ارسال"))
+    def get_sent_at(self, obj: SMSCampaignSendLog):
+        return show_date_time(obj.sent_at)
+
+    @admin.display(description=_("آرگومان های ارسال شده"))
+    def get_args(self, obj: SMSCampaignSendLog):
+        cleaned = obj.message_args.replace("'", "").replace('"', "")
+        return f"{cleaned[1:20]} ..."
+
+    @admin.display(description=_("نام کمپین"))
+    def get_campaign(self, obj: SMSCampaignSendLog) -> str:
+        return format_html(
+            '<a href="{}">{}</a>',
+            f"/admin/adora/smscampaign/{obj.campaign.id}/change",
+            obj.campaign.name,
+        )
+
+    @admin.display(description=_("کاربر"))
+    def get_user(self, obj: SMSCampaignSendLog) -> str:
+        return format_html(
+            '<a href="{}">{}</a>',
+            f"/admin/account/user/{obj.user.id}/change",
+            obj.user.profile.get_full_name,
+        )
+
+
+admin.site.register(SMSCampaign, SMSCampaignAdmin)
+admin.site.register(SMSCampaignParam, SMSCampaignParamAdmin)
+admin.site.register(SMSCampaignSendLog, SMSCampaignSendLogAdmin)
 
 admin.site.register(Comment, CommentAdmin)
 admin.site.register(OrderReceipt, OrderReceiptAdmin)

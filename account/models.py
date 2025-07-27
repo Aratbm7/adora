@@ -1,4 +1,3 @@
-
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from phonenumber_field.modelfields import PhoneNumberField
@@ -49,18 +48,19 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     is_admin = models.BooleanField(default=False, verbose_name=_('ادمین'))
 
-    
     objects = UserManager()
     USERNAME_FIELD = 'phone_number'
-    
+
     class Meta:
         verbose_name = _("کاربر")
         verbose_name_plural = _("کاربرها")
-        
-    
+
+    def phone_number_with_zero(self) -> str:
+        return str(self.phone_number).replace('+98','0')
+
     def __str__(self) -> str:
-        return str(self.phone_number).replace('+98', '0')
-    
+        return self.phone_number_with_zero()
+
     # def has_perm(self, perm, obj=None):
     #     return True
 
@@ -70,7 +70,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     # @property
     # def is_staff(self):
     #     return self.is_admin
-    
+
     # class Profile(models.Model):
     #     first_name = models.CharField(_("first name"), max_length=150, blank=True, verbose_name=_("نام"))
     #     last_name = models.CharField(_("last name"), max_length=150, blank=True, verbose_name=_("نام خانوادگی"))
@@ -85,19 +85,48 @@ class Profile(DateFields):
     # referral_code = models.CharField(max_length=25, verbose_name=_('کد دعوت'), unique=True)
     wallet_balance = models.DecimalField(max_digits=10, decimal_places=2,default=0, verbose_name=_('کیف پول'))
     user = models.OneToOneField(User, on_delete=models.SET_NULL,related_name='profile',  verbose_name=_('کاربر'), null=True)
-    
+
     class Meta:
         verbose_name = _('پروفایل')
         verbose_name_plural = ('پروفایل ها')
-        
-    def get_full_name(self):
-        return f"{self.first_name} {self.last_name}"
 
+    @property
+    def get_first_name(self):
+        if self.first_name:
+            return self.first_name
+        return "کاربر ادورا یدک"
+        
     
+    @property
+    def get_last_name(self):
+        if self.last_name:
+            return self.last_name
+        return "کاربر ادورا یدک"
+        
+    
+    @property
+    def get_full_name(self):
+        """If there is a full name return it
+            or return whethere first name or last name if each exist
+            
+            if first name and last name is empty it return (کاربر آدورا یدک)
+
+        Returns:
+            full name: str
+        """
+        if self.first_name and self.last_name:
+            return f"{self.first_name} {self.last_name}"
+        elif self.first_name:
+            return f"{self.first_name}"
+        elif self.last_name:
+            return f"{self.last_name}"
+        else:
+            return f"کاربر آدورا یدک"        
+
     def __str__(self):
-        return self.get_full_name()
- 
-    
+        return self.get_full_name
+
+
 class Address(DateFields):
     profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='addresses', verbose_name=_('پروفایل'))
     street_address = models.TextField(_("آدرس دقیق"))
@@ -116,8 +145,8 @@ class Address(DateFields):
         else:
             short_address = self.street_address
         return f"{self.city}, {self.state}, {short_address}"
-    
-    
+
+
 class DeliveryCost(models.Model):
     cost = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('هزینه پست'))
     post_service = models.CharField(max_length=100, null=True, blank=True, verbose_name=_("نام پست"))
@@ -130,9 +159,3 @@ class DeliveryCost(models.Model):
         
     def __str__(self):
         return f"{self.post_service} {self.cost}"
-    
-
-
-
-
-
