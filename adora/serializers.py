@@ -585,9 +585,9 @@ class OrderSerializer(serializers.ModelSerializer):
         # print("order_items_data", order_items_data)
         # print('sold_pric', order_items_data[0]['sold_price'])
         request = self.context.get("request")
-        if not request:
-            torob_access_token = "There is no Torob Access Token"
-        torob_access_token = request.query_params.get("torob_access_token")
+        # if not request:
+        #     torob_access_token = "There is no Torob Access Token"
+        # torob_access_token = request.query_params.get("torob_access_token")
 
         try:
             # Wrap everything in a transaction to ensure atomicity
@@ -616,7 +616,7 @@ class OrderSerializer(serializers.ModelSerializer):
                 if order.payment_reference == os.getenv("TOROBPAY_MERCHANT_NAME"):
                     self.calculate_total_price_for_Installment_purchase(order)
                     print("helllo_torob")
-                    send_torobpay_payment_information(order, torob_access_token)
+                    send_torobpay_payment_information(order)
                     
                 # Use wallet_balance 
                 if order.use_wallet_balance:

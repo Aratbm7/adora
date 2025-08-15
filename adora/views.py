@@ -2,7 +2,6 @@ import json
 import os
 import time
 import traceback
-from urllib import request
 
 import requests
 from django.db.models import Prefetch
@@ -59,7 +58,7 @@ from core.permissions import (  # object_level_permissions,
 )
 
 # from drf_yasg import openapi
-# from typing import Optional, Dict
+from typing import Any, Dict, cast
 from rest_framework import permissions, status, viewsets
 
 
@@ -459,14 +458,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         send_order_status_message.delay(
             str(order.user.phone_number).replace("+98", "0"),
             [self._get_full_name_or_phone_number(order), order.tracking_number],
-            int(os.getenv("ORDER_SUCCESS")),
+            int(os.getenv("ORDER_SUCCESS", 0)),
         )
 
     def _failed_sms(self, order: Order):
         send_order_status_message.delay(
             str(order.user.phone_number).replace("+98", "0"),
             [self._get_full_name_or_phone_number(order)],
-            int(os.getenv("ORDER_FAILED")),
+            int(os.getenv("ORDER_FAILED", 0)),
         )
 
     @action(
@@ -511,7 +510,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if payment_status == "OK":
             try:
-                zarin_verify_url = os.getenv("ZARIN_VERIFY_URL")
+                zarin_verify_url = os.getenv("ZARIN_VERIFY_URL", "")
                 verify_payload = {
                     "merchant_id": os.getenv("ZARIN_MERCHANT_ID"),
                     "amount": int(order.total_price),
@@ -670,7 +669,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            order_receipt = order.receipt
+            order_receipt: OrderReceipt = order.receipt
             if not order_receipt:
                 return Response(
                     {"message": "No order receipt found for this order."},
@@ -693,6 +692,10 @@ class OrderViewSet(viewsets.ModelViewSet):
             if verify_data.get("successful"):
                 print("Payment verification successful")
                 transaction_id = verify_data.get("response", {}).get("transactionId", "")
+                order.payment_status='TV'
+                order.save()
+
+                order_receipt.torob_error_message = verify_data
                 order_receipt.torob_transaction_id = transaction_id
                 order_receipt.save()
 
@@ -705,6 +708,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                 settle_data = settle_response.json()
 
                 if settle_data.get("successful"):
+                    order_receipt.torob_error_message = settle_data
+                    order_receipt.torob_transaction_id = settle_data.get("response", {}).get("transactionId", "")
+                    order.save()
                     order.payment_status = "C"
                     order.save()
                     self._success_sms(order)
@@ -718,10 +724,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                 else:
                     error_message = settle_data.get("errorData", {}).get("message", "Unknown error")
                     error_code = settle_data.get("errorData", {}).get("errorCode", "Unknown code")
-                    order_receipt.torob_error_message = error_message
+                    order_receipt.torob_error_message += error_message
                     order_receipt.torob_error_code = error_code
                     order_receipt.save()
-                    order.payment_status = "F"
+                    order.payment_status = "TV"
                     order.save()
                     self._failed_sms(order)
                     return Response(
@@ -768,7 +774,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    
+    # TODO : Change permission to IsAuthenticated
     @action(
         detail=False,
         methods=["get"],
@@ -816,7 +822,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         try:
             TOROBPAY_BASE_URL = os.getenv("TOROBPAY_BASE_URL")
             TOROBPAY_PAYMENT_ELIGIBLE = os.getenv("TOROBPAY_PAYMENT_ELIGIBLE")
-            access_token = request.query_params.get("torob_access_token", "")
+            access_token = get_torobpay_access_token()
 
             amount = request.query_params.get("amount", "")
             print("access_token", access_token)
@@ -847,13 +853,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                     res.get("errorData"), status=status.HTTP_400_BAD_REQUEST
                 )
 
-        except Exception:
-            error_message = str(traceback.format_exc())
-            print(error_message)
-            return Response(
-                {"message": f"An unexpected error!!"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         except ConnectionError:
             error_message = str(traceback.format_exc())
             print(error_message)
@@ -861,6 +860,15 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"message": f"An Cennection error!! Try again please"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        except Exception:
+            error_message = str(traceback.format_exc())
+            print(error_message)
+            return Response(
+                {"message": f"An unexpected error!!"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
 
     @action(
         detail=False,
@@ -876,9 +884,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             serializer = OrderRejectedReasonSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            returned_asked_reason = serializer.validated_data[
-                "returned_rejected_reason"
-            ]
+            validated_data = cast(Dict[str, Any], serialize.validated_data)
+            returned_asked_reason = cast(Dict[str, Any], validated_data)
             if not tracking_number:
                 return Response(
                     {"message": "Tracking number is missing."},
@@ -886,7 +893,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 )
 
             order = Order.objects.filter(tracking_number=tracking_number).first()
-            self._failed_sms(order)
 
             if not order:
                 return Response(
@@ -896,6 +902,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
+            self._failed_sms(order)
             # Prevent to send more than one Returned ask
             if not order.returned_status == "N":
                 return Response(
@@ -905,7 +912,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             full_name = self._get_full_name_or_phone_number(order)
             phone_number = str(order.user.phone_number).replace("+98", "0")
-            text_code = os.environ.get("ORDER_RETURNED_ASK")
+            text_code = os.environ.get("ORDER_RETURNED_ASK", 0)
             print(text_code)
             send_order_status_message.delay(
                 phone_number, [full_name, tracking_number], int(text_code)

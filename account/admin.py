@@ -12,12 +12,11 @@ from jalali_date import datetime2jalali
 from jalali_date.admin import ModelAdminJalaliMixin
 
 from account.models import *
-from account.tasks import (
-    send_campaign_pattern_sms_with_mellipayamk,
-) 
-from adora.models import Order, SMSCampaign, SMSCampaignParam, SMSCampaignSendLog
-from core.utils.show_jalali_datetime import show_date_time
+from account.tasks import send_campaign_pattern_sms_with_mellipayamk
+from adora.models import Order, SMSCampaign
 from core.utils.separate_and_convert_to_fa import separate_digits_and_convert_to_fa
+from core.utils.show_jalali_datetime import show_date_time
+
 
 def send_sms_campaign(modeladmin, request, queryset):
     campaign_id = request.POST.get("campaign_id")
@@ -47,7 +46,6 @@ class SMSCampaignActionForm(ActionForm):
         label="کمپین پیامکی",
     )
 
-
 class HasWalletBalnceFilter(admin.SimpleListFilter):
     title = _("دارای اعتبار کیف پول")
     parameter_name = "wallet_balance"
@@ -71,7 +69,6 @@ class NoPurchaseLastXDaysFilter(admin.SimpleListFilter):
     title = "X روز اخیر خرید نداشته‌اند"
     parameter_name = "no_purchase_30_days"
 
-    
     def lookups(self, request, model_admin):
         lookups = (
             ("3", "سه روز خرید نداشته اند"),
@@ -83,12 +80,12 @@ class NoPurchaseLastXDaysFilter(admin.SimpleListFilter):
         return lookups
 
     @staticmethod
-    def query(day:int) -> List[int]:
-            cutoff = timezone.now() - timedelta(days=day)
-            return Order.objects.filter(created_date__gte=cutoff,
-                                        payment_status="C").values_list(
-                "user_id", flat=True
-            )
+    def query(day: int) -> List[int]:
+        cutoff = timezone.now() - timedelta(days=day)
+        return Order.objects.filter(
+            created_date__gte=cutoff, payment_status="C"
+        ).values_list("user_id", flat=True)
+
     def queryset(self, request, queryset):
         if self.value() == "3":
             return queryset.exclude(id__in=self.query(3))
@@ -100,7 +97,7 @@ class NoPurchaseLastXDaysFilter(admin.SimpleListFilter):
             return queryset.exclude(id__in=self.query(15))
         if self.value() == "30":
             return queryset.exclude(id__in=self.query(30))
-        
+
         return queryset
 
 
@@ -109,12 +106,14 @@ class MoreThanXOrdersFilter(admin.SimpleListFilter):
     parameter_name = "more_than_x_orders"
 
     @staticmethod
-    def query(count:int) -> List[int]:
-        return Order.objects.values("user_id")\
-        .annotate(count=Count("id"))\
-        .filter(count__gt=count,  payment_status="C")\
-        .values_list("user_id", flat=True)
-    
+    def query(count: int) -> List[int]:
+        return (
+            Order.objects.values("user_id")
+            .annotate(count=Count("id"))
+            .filter(count__gte=count, payment_status="C")
+            .values_list("user_id", flat=True)
+        )
+
     def lookups(self, request, model_admin):
         return [
             ("two", "بیش از ۲ سفارش"),
@@ -122,85 +121,75 @@ class MoreThanXOrdersFilter(admin.SimpleListFilter):
             ("four", "بیش از ۴ سفارش"),
             ("five", "بیش از ۵ سفارش"),
             ("ten", "بیش از ۱۰ سفارش"),
-                                        ]
+        ]
 
     def queryset(self, request, queryset):
-        
+
         if self.value() == "two":
             return queryset.filter(id__in=self.query(2))
-        
+
         if self.value() == "three":
             return queryset.filter(id__in=self.query(3))
-        
+
         if self.value() == "four":
             return queryset.filter(id__in=self.query(4))
-        
+
         if self.value() == "five":
             return queryset.filter(id__in=self.query(5))
-        
+
         if self.value() == "ten":
             return queryset.filter(id__in=self.query(10))
-        
-        return queryset
 
-
-class CartAbandonersFilter(admin.SimpleListFilter):
-    title = "سبد خرید رهاشده"
-    parameter_name = "cart_abandoner"
-
-    def lookups(self, request, model_admin):
-        return [("yes", "دارای سبد خرید رهاشده")]
-
-    def queryset(self, request, queryset):
-        if self.value() == "yes":
-            return queryset.filter(orders__status="pending").distinct()
         return queryset
 
 
 class VIPBuyersLastMonthFilter(admin.SimpleListFilter):
-    title = 'VIP ماه اخیر (بالای X تومان)'
-    parameter_name = 'vip_last_month'
+    title = "VIP ماه اخیر (بالای X تومان)"
+    parameter_name = "vip_last_month"
 
     @staticmethod
-    def query(amount:int) -> List[int]:
-            start = timezone.now().replace(day=1)
-            end = (start + timedelta(days=32)).replace(day=1)
-            return  Order.objects.filter(
+    def query(amount: int) -> List[int]:
+        start = timezone.now().replace(day=1)
+        end = (start + timedelta(days=32)).replace(day=1)
+        return (
+            Order.objects.filter(
                 created_date__gte=start, created_date__lt=end, payment_status="C"
-            ).values('user_id').annotate(total=Sum('total_price')).filter(
+            )
+            .values("user_id")
+            .annotate(total=Sum("total_price"))
+            .filter(
                 total__gte=amount,
-                
-            ).values_list('user_id', flat=True)
-    
+            )
+            .values_list("user_id", flat=True)
+        )
+
     def lookups(self, request, model_admin):
         return [
-            ('300_000', '۳۰۰ هزار تومان '),
-            ('500_000', '۵۰۰ هزار تومان '),
-            ('1_000_000', 'یک میلیون تومان '),
-            ('2_000_000', '۲ میلیون تومان '),
-            ('5_000_000', '۵ میلیون تومان '),
-            ('10_000_000', '۱۰ میلیون تومان '),
-            
-            ]
-
+            ("300_000", "۳۰۰ هزار تومان "),
+            ("500_000", "۵۰۰ هزار تومان "),
+            ("1_000_000", "یک میلیون تومان "),
+            ("2_000_000", "۲ میلیون تومان "),
+            ("5_000_000", "۵ میلیون تومان "),
+            ("10_000_000", "۱۰ میلیون تومان "),
+        ]
 
     def queryset(self, request, queryset):
-        if self.value() == '300_000':
+        if self.value() == "300_000":
             return queryset.filter(id__in=self.query(300_000))
-        if self.value() == '500_000':
+        if self.value() == "500_000":
             return queryset.filter(id__in=self.query(500_000))
-        if self.value() == '1_000_000':
+        if self.value() == "1_000_000":
             return queryset.filter(id__in=self.query(1_000_000))
-        if self.value() == '2_000_000':
+        if self.value() == "2_000_000":
             return queryset.filter(id__in=self.query(2_000_000))
-        if self.value() == '5_000_000':
+        if self.value() == "5_000_000":
             return queryset.filter(id__in=self.query(5_000_000))
-        if self.value() == '10_000_000':
+        if self.value() == "10_000_000":
             return queryset.filter(id__in=self.query(10_000_000))
-        
+
         return queryset
-    
-    
+
+
 class OneTimeBuyersFilter(admin.SimpleListFilter):
     title = "فقط یک خرید موفق داشته اند"
     parameter_name = "one_time_buyer"
@@ -232,16 +221,14 @@ class UserAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         "is_active",
         "is_admin",
     )
-    search_fields = [ "phone_number", "profile__first_name", "profile__last_name"]
+    search_fields = ["phone_number", "profile__first_name", "profile__last_name"]
     search_help_text = "شما میتواند با شماره تلفن (چهار رقم اخر و انگلیسی) و نام و نام خانوادگی سرچ کنید."
     list_filter = (
         HasWalletBalnceFilter,
         NoPurchaseLastXDaysFilter,
         OneTimeBuyersFilter,
         VIPBuyersLastMonthFilter,
-        CartAbandonersFilter,
         MoreThanXOrdersFilter,
-        
         "is_staff",
         "is_active",
         "is_admin",
@@ -250,7 +237,6 @@ class UserAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
 
     actions = (send_sms_campaign,)
     action_form = SMSCampaignActionForm
-
 
     @admin.display(description="(تومان) اعتبار کیف پول")
     def wallet_balance(self, obj):
@@ -284,14 +270,14 @@ class UserAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     def get_wallet_balance(sefl, obj):
         return separate_digits_and_convert_to_fa(obj.wallet_balance)
 
-    
     @admin.display(description="پیام های ارسال شده")
-    def get_sent_messages(self, obj:User):
+    def get_sent_messages(self, obj: User):
         return format_html(
             '<a href="{}">{}</a>',
             f"/admin/adora/smscampaignsendlog/?user__id={obj.id}",
             "پیام ها",
         )
+
 
 class ProfileAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
 
@@ -301,7 +287,7 @@ class ProfileAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         "id_card",
         "get_wallet_balance",
         "orders_link",
-        "get_sent_messages"
+        "get_sent_messages",
     )
     search_fields = ("first_name", "last_name", "user__phone_number")
     search_help_text = _(
@@ -332,15 +318,14 @@ class ProfileAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
             f"/admin/account/address/?profile__pk__exact={obj.id}",
             "آدرس ها",
         )
-        
+
     @admin.display(description="پیام های ارسال شده")
-    def get_sent_messages(self, obj:Profile):
+    def get_sent_messages(self, obj: Profile):
         return format_html(
             '<a href="{}">{}</a>',
             f"/admin/adora/smscampaignsendlog/?user__id={obj.user.id}",
             "پیام ها",
         )
-
 
 
 class ProfileFilter(AutocompleteFilter):
@@ -360,9 +345,12 @@ class AddressAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         return f"{obj.street_address[:20]} ..."
 
 
+User._meta.verbose_name_plural = "👤 کاربران"
+Profile._meta.verbose_name_plural = "🧾 پروفایل‌های کاربران"
+Address._meta.verbose_name_plural = "📍 آدرس‌های کاربران"
+
 # admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 admin.site.register(Profile, ProfileAdmin)
 admin.site.register(Address, AddressAdmin)
 admin.site.register(DeliveryCost)
-

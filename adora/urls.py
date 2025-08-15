@@ -26,7 +26,7 @@ router.register(
     "collaborate_contact",
     CollaborateAndContactUsViewset,
     basename="collaborate_contact",
-),
+)
 router.register(
     "cash_discount_percent",
     CashDiscountPercentViewset,

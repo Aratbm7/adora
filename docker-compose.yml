@@ -1,4 +1,3 @@
-version: "3.8"
 
 services:
   backend:
@@ -16,14 +15,30 @@ services:
       - DJANGO_ENV=development
 
     volumes:
-      - .:/home/app/backend/
+      # - .:/home/app/backend/
       - static_volume_lo:/home/app/beckend/core/staticfiles
       - media_volume_lo:/home/app/beckend/media
+
 
     depends_on:
       - redis_master
       - redis_replica
       - db
+
+    develop:
+      watch:
+        # - action: sync+restart
+        - action: sync
+          path: .
+          target: /home/app/
+          ignore:
+            - .git
+            - node_modules
+            - .idea
+            - .vscode
+            - .env
+            - .env.dev
+            - .env.prod
 
   db:
     image: postgres:15-alpine
@@ -45,7 +60,7 @@ services:
     #   dockerfile: Dockerfile
     image: adora-app
     user: "1000:1000"
-    
+
     entrypoint: ./docker-entrypoint-celery-worker.sh
     # volumes:
     #   - .:/home/app/backend/
@@ -140,13 +155,13 @@ services:
     depends_on:
       - wordpress_db
         # condition: service_healthy
-    
+
     # healthcheck:
     #   test: ["CMD", "curl", "-f", "http://localhost:80/wp-login.php"]
     #   interval: 5s
     #   timeout: 5s
     #   retries: 5
-      
+
   wordpress_db:
       image: mysql:8.0
       container_name: wordpress_db
@@ -165,7 +180,7 @@ services:
         timeout: 5s
         retries: 5
 
-      
+
   # wordpress:
   #   image: wordpress:latest
   #   ports:

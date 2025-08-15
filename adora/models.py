@@ -1,23 +1,20 @@
 from decimal import Decimal
 import random
 import string
-from datetime import timezone
-
+from datetime import  timedelta
+from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils.translation import gettext as _
 from phonenumber_field.modelfields import PhoneNumberField
+import os
 
 
 # Create your models here.
 class Date(models.Model):
     created_date = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ایجاد")
     updated_date = models.DateTimeField(auto_now=True, verbose_name="تاریخ آپدیت")
-
-    class Meta:
-        verbose_name = _("دسته بندی")
-        verbose_name_plural = _("دسته بندی کل")
 
     class Meta:
         abstract = True
@@ -59,7 +56,7 @@ class Category(Date):
 
     class Meta:
         verbose_name = _("دسته بندی")
-        verbose_name_plural = _("دسته بندی کل")
+        verbose_name_plural = _("📂 دسته‌بندی‌ها")
 
     def __str__(self) -> str:
         return self.name
@@ -93,7 +90,7 @@ class Car(Date):
 
     class Meta:
         verbose_name = _("خودرو")
-        verbose_name_plural = _(" خودرو ها")
+        verbose_name_plural = _("🚗 خودروها")
 
     def __str__(self) -> str:
         return self.fa_name
@@ -113,7 +110,7 @@ class Brand(Date):
 
     class Meta:
         verbose_name = _("برند")
-        verbose_name_plural = _(" برند ها")
+        verbose_name_plural = _("🏷️ برندها")
 
     def __str__(self) -> str:
         return self.name
@@ -144,7 +141,7 @@ class ProductImage(Date):
 
     class Meta:
         verbose_name = _(" عکس محصول")
-        verbose_name_plural = _("عکس های محصول")
+        verbose_name_plural = _("🖼️ تصاویر محصول")
 
     def __str__(self) -> str:
         if self.alt:
@@ -163,7 +160,7 @@ class FAQ(models.Model):
 
     class Meta:
         verbose_name = _("پرسش محصولات")
-        verbose_name_plural = _("پرسش های محصولات")
+        verbose_name_plural = _("❓ پرسش‌های متداول")
 
 
 class Product(Date):
@@ -266,8 +263,8 @@ class Product(Date):
         return global_faqs | product_faqs  # ترکیب سوالات اختصاصی و عمومی
 
     class Meta:
-        verbose_name = _("محصول")
-        verbose_name_plural = _("محصولات")
+        verbose_name = _("🛍️محصول")
+        verbose_name_plural = _("📦️  محصولات")
 
     def __str__(self):
         return self.fa_name
@@ -280,7 +277,7 @@ class CashDiscountPercent(models.Model):
 
     class Meta:
         verbose_name = _("درصد تخفیف خرید نقد")
-        verbose_name_plural = _("درصد تخفیف خرید نقد")
+        verbose_name_plural = _("💸 درصد تخفیف نقدی")
 
     def __str__(self):
         return f"{self.zarinpal_discount_percent}%"
@@ -291,15 +288,20 @@ class Order(Date):
     PENDING_STATUS = "P"
     PAYMENT_STATUS_COMPLETE = "C"
     PAYMENT_STATUS_FAILED = "F"
-
+    TOROB_VERIFIED = "TV"
+    TOROB_CANCELED = "TC"
+    TOROB_REVERT = "TR"
     PAYMENT_STATUS_CHOICES = [
         (PENDING_STATUS, _("در انتظار")),
         (PAYMENT_STATUS_COMPLETE, "موفق"),
         (PAYMENT_STATUS_FAILED, "نا موفق"),
+        (TOROB_CANCELED ,_("کنسل شده‌ (ترب)")),
+        (TOROB_REVERT ,_("لغو شده‌ (ترب)")),
+        (TOROB_VERIFIED, _("وریفای شده در انتظار settlement")),
     ]
 
     payment_status = models.CharField(
-        max_length=1,
+        max_length=10,
         choices=PAYMENT_STATUS_CHOICES,
         default=PENDING_STATUS,
         verbose_name=_("وضعیت پرداخت"),
@@ -497,7 +499,7 @@ class Order(Date):
 
     class Meta:
         verbose_name = _("سفارش")
-        verbose_name_plural = _("سفارشات")
+        verbose_name_plural = _("🛒 سفارش‌ها")
 
     def __str__(self):
         return self.tracking_number
@@ -531,15 +533,35 @@ class OrderItem(models.Model):
         ) * self.quantity
 
     def save(self, *args, **kwargs):
-        # اگر sold_price هنوز مقدار نداشته باشد، آن را تنظیم کن
-        if not self.sold_price:
-            self.sold_price = round(self._get_discounted_price())  # گرد کردن قیمت نهایی
 
-        super().save(*args, **kwargs)
+        if not self.sold_price:
+            # محاسبه قیمت اولیه با تخفیف محصول
+            price = self._get_discounted_price()
+
+            # اگر سفارش با زرین‌پال پرداخت شده باشد، تخفیف نقدی اعمال کن
+            if self.order.payment_reference == os.getenv("ZARIN_MERCHANT_NAME", 'zarinpal'):
+                print(f"Come from model save {self.order.payment_reference}")
+                try:
+                    cash_discount = CashDiscountPercent.objects.last()
+                    if cash_discount:
+                        discount_percent = Decimal(cash_discount.zarinpal_discount_percent) / 100
+                        price = price * (1 - discount_percent)
+                except CashDiscountPercent.DoesNotExist:
+                    print("#"*50)
+                    print("Some error occured in OrderItem save method")
+                    print("#"*50)
+
+            self.sold_price = round(price)
+
+        super().save(*args, **kwargs)# اگر sold_price هنوز مقدار نداشته باشد، آن را تنظیم کن
+        # if not self.sold_price:
+        #     self.sold_price = round(self._get_discounted_price())   # گرد کردن قیمت نهایی
+
+        # super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = _("آیتم سفارش")
-        verbose_name_plural = _("آیتم های سفارش")
+        verbose_name_plural = _("📋 آیتم‌های سفارش")
 
     def __str__(self):
         return f"جزيیات سفارش {self.order}"
@@ -579,7 +601,7 @@ class OrderReceipt(Date):
 
     class Meta:
         verbose_name = _("رسید")
-        verbose_name_plural = _("رسید ها")
+        verbose_name_plural = _("🧾 رسیدها")
 
     def __str__(self):
         if self and self.authority:
@@ -593,8 +615,8 @@ class OrderProvider(models.Model):
     name = models.CharField(max_length=100)
 
     class Meta:
-        verbose_name = _("درگاه پرداخت")
-        verbose_name_plural = _("درگاه های پرداخت")
+        verbose_name = _("💵 درگاه پرداخت")
+        verbose_name_plural = _("💵 درگاه های پرداخت")
 
     def __str__(self):
         return self.name
@@ -608,7 +630,7 @@ class Banner(models.Model):
 
     class Meta:
         verbose_name = _("بنر")
-        verbose_name_plural = _("بنر ها")
+        verbose_name_plural = _("🖼️ بنرها")
 
     def __str__(self):
         return self.title
@@ -640,7 +662,7 @@ class Comment(Date):
 
     class Meta:
         verbose_name = _("کامنت")
-        verbose_name_plural = _("کامنت‌ها")
+        verbose_name_plural = _("💬 نظرات")
 
     def __str__(self):
         return self.text[:20]
@@ -703,7 +725,7 @@ class Collaborate_Contact(Date):
 
     class Meta:
         verbose_name = _("همکاری و ارتباط با ما")
-        verbose_name_plural = _("درخواست های همکاری و ارتباط با ما")
+        verbose_name_plural = _("🤝 درخواست‌های همکاری")
 
     def __str__(self):
         return self.full_name
@@ -723,7 +745,7 @@ class SMSCampaign(Date):
 
     class Meta:
         verbose_name = _("کمپین تبلیغات پیامکی")
-        verbose_name_plural = _("کمپین های تبلیغات پیامکی")
+        verbose_name_plural = _("📢 کمپین‌های پیامکی")
 
     def is_running(self):
         now = timezone.now()
@@ -773,7 +795,7 @@ class SMSCampaignParam(Date):
     class Meta:
         ordering = ["position"]
         verbose_name = _("پارامتر کمپین تبلیغات پیامکی")
-        verbose_name_plural = _("پارامتر های کمپین های تبلیغات پیامکی")
+        verbose_name_plural = _("🧩 پارامترهای کمپین")
 
     def resolve_value(self, user, profile=None, campaign=None):
         """
@@ -849,6 +871,8 @@ class SMSCampaignParam(Date):
             return f"{self.campaign.name} - {label} - position: {self.position}"
 
         return f"{self.campaign.name} - {self.static_value} - position: {self.position}"
+
+
 class SMSCampaignSendLog(models.Model):
     campaign = models.ForeignKey(
         SMSCampaign, on_delete=models.CASCADE, verbose_name=_("کمپین پیامکی")
@@ -873,8 +897,26 @@ class SMSCampaignSendLog(models.Model):
     sent_at = models.DateTimeField(auto_now_add=True, verbose_name=_("تاریخ ارسال"))
 
     class Meta:
-        verbose_name = _("لاگ ارسال پیامک کمپین")
-        verbose_name_plural = _("لاگ‌های ارسال پیامک کمپین‌ها")
+        verbose_name = _("📜لاگ ارسال پیامک کمپین")
+        verbose_name_plural = _("📜 لاگ‌های ارسال پیامک")
+
+     
+
+    class Meta:
+        verbose_name = _("📜لاگ ارسال پیامک کمپین")
+        verbose_name_plural = _("📜 لاگ‌های ارسال پیامک")
 
     def __str__(self):
         return f"{self.user} - {'موفق' if self.is_successful else 'ناموفق'}"
+
+
+class TroboMerchantToken(models.Model):
+    token = models.CharField(max_length=500)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("🔐 توکن ترب پی")
+        verbose_name_plural = _("🔐 توکن ها ترب")
+
+    def is_expired(self):
+        return timezone.now() - self.updated_at > timedelta(minutes=59)

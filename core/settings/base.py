@@ -1,8 +1,10 @@
-from pathlib import Path
 import os
-from dotenv import load_dotenv
-from celery.schedules import crontab
 from datetime import timedelta
+from pathlib import Path
+
+from celery.schedules import crontab
+from dotenv import load_dotenv
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -12,13 +14,13 @@ load_dotenv()
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-xz$p@moc34)7x+$7a-u75f=m)hq0j--q#)ubfdaq_od0gzl7z1'
+SECRET_KEY = "django-insecure-xz$p@moc34)7x+$7a-u75f=m)hq0j--q#)ubfdaq_od0gzl7z1"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # DEBUG =  bool(os.environ.get("DEBUG", default=0))
 
 # ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(" ")
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ["*"]
 
 # Application definition
 
@@ -47,37 +49,39 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.locale.LocaleMiddleware",
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-AUTH_USER_MODEL = 'account.User'
+AUTH_USER_MODEL = "account.User"
 
-ROOT_URLCONF = 'core.urls'
+ROOT_URLCONF = "core.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'templates'),],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [
+            os.path.join(BASE_DIR, "templates"),
+        ],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'core.wsgi.application'
+WSGI_APPLICATION = "core.wsgi.application"
 
 
 # Database
@@ -92,12 +96,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     "default": {
-        "ENGINE": os.environ.get("SQL_ENGINE", 'django.db.backends.postgresql'),
-        "NAME": os.environ.get("SQL_DATABASE",'adora_db_lo'),
-        "USER": os.environ.get("SQL_USER",'adora_user_lo'),
-        "PASSWORD": os.environ.get("SQL_PASSWORD", '1234_lo'),
-        "HOST": os.environ.get("SQL_HOST", 'db' ),
-        "PORT": os.environ.get("SQL_PORT", '6379'),
+        "ENGINE": os.environ.get("SQL_ENGINE", "django.db.backends.postgresql"),
+        "NAME": os.environ.get("SQL_DATABASE", "adora_db_lo"),
+        "USER": os.environ.get("SQL_USER", "adora_user_lo"),
+        "PASSWORD": os.environ.get("SQL_PASSWORD", "1234_lo"),
+        "HOST": os.environ.get("SQL_HOST", "db"),
+        "PORT": os.environ.get("SQL_PORT", "6379"),
     }
 }
 
@@ -107,16 +111,16 @@ DATABASES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -141,7 +145,7 @@ LANGUAGES = (
     # more than one language is expected here
 )
 LANGUAGE_CODE = "fa"
-TIME_ZONE = 'Iran'
+TIME_ZONE = "Iran"
 PHONENUMBER_DEFAULT_REGION = "IR"
 
 # Static files (CSS, JavaScript, Images)
@@ -151,19 +155,14 @@ PHONENUMBER_DEFAULT_REGION = "IR"
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
-    'DEFAULT_FILTER_BACKENDS': (
-        'django_filters.rest_framework.DjangoFilterBackend',
-    
-    ),
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
         # "rest_framework.authentication.BasicAuthentication",
-
     ),
-
 }
 CACHES = {
     "default": {
@@ -171,14 +170,14 @@ CACHES = {
         "LOCATION": "redis://:1234@redis_master:6379/1",  # Auth password is included
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-        }
+        },
     },
     "replica": {
         "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": "redis://:1234@redis_replica:6380/1",  # Reading from replica
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-        }
+        },
     },
     "admin_interface": {  # کش مخصوص admin_interface
         "BACKEND": "django_redis.cache.RedisCache",
@@ -188,32 +187,32 @@ CACHES = {
         },
         "TIMEOUT": None,  # کش ادمین همیشه معتبر باشد
     },
-
 }
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / "static"
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "static" # برای collectstatic
 
-
+STATICFILES_DIRS = [
+    BASE_DIR / "staticfiles",  # اطمینان از لود شدن فایل‌های custom
+]
 # CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/0"
 CELERY_BROKER_URL = "redis://:1234@redis_master:6379/0"
 CELERY_RESULT_BACKEND = "redis://:1234@redis_master:6379/0"
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC'
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "UTC"
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-
 # Celery beat config
 CELERY_BEAT_SCHEDULE = {
     "send_otp_to_phone_number": {
-        'task': "account.tasks.send_otp_to_phone",
+        "task": "account.tasks.send_otp_to_phone",
         # 'schedule': crontab(minute="*/15")
-        'schedule': 2,
-        'args': ['0909090909', '1111111'],
+        "schedule": 2,
+        "args": ["0909090909", "1111111"],
         # 'kwargs': {}
     }
 }
@@ -226,7 +225,7 @@ SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"  # Points to the master Redis
 
 CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins (use with caution)
-X_FRAME_OPTIONS = 'SAMEORIGIN'
+X_FRAME_OPTIONS = "SAMEORIGIN"
 SILENCED_SYSTEM_CHECKS = ["security.W019"]
 
 
@@ -248,8 +247,9 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     "https://adorayadak.ir",
-    "https://api.adorayadak.ir",  
+    "https://api.adorayadak.ir",
 ]
+
 
 ALLOWED_SMS_CAMPAIGN_PARAM_PATHS = [
     ("profile.get_first_name", "نام"),

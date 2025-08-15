@@ -1,0 +1,8 @@
+{
+	"include": ["."],
+	"venvPath": ".",
+	"venv": ".venv",
+	"typeCheckingMode": "off",
+	"reportAttributeAccessIssue": false,
+	"reportGeneralTypeIssues": "none"
+}

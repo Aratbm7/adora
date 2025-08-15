@@ -1,5 +1,6 @@
 {
   "python.autoComplete.addBrackets": true,
   "python.analysis.autoImportCompletions": true,
-  "python.analysis.useLibraryCodeForTypes": true
+  "python.analysis.useLibraryCodeForTypes": true,
+  "python.REPL.enableREPLSmartSend": false
 }
