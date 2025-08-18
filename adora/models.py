@@ -291,13 +291,19 @@ class Order(Date):
     TOROB_VERIFIED = "TV"
     TOROB_CANCELED = "TC"
     TOROB_REVERT = "TR"
+    AZKIVAM_VERIFY = "AV"
+    AZKIVAM_CANCEL = "AC"
+    AZKIVAM_REVERSE = "AR"
     PAYMENT_STATUS_CHOICES = [
-        (PENDING_STATUS, _("در انتظار")),
+        (PENDING_STATUS, ("در انتظار")),
         (PAYMENT_STATUS_COMPLETE, "موفق"),
         (PAYMENT_STATUS_FAILED, "نا موفق"),
         (TOROB_CANCELED ,_("کنسل شده‌ (ترب)")),
         (TOROB_REVERT ,_("لغو شده‌ (ترب)")),
         (TOROB_VERIFIED, _("وریفای شده در انتظار settlement")),
+        (AZKIVAM_VERIFY, _("از کی وام وریفای")),
+        (AZKIVAM_CANCEL, _("از کی وام کنسل")),
+        (AZKIVAM_REVERSE, _("ازکی وام رورس")),
     ]
 
     payment_status = models.CharField(
@@ -427,6 +433,19 @@ class Order(Date):
     )
     torob_payment_page_url = models.CharField(
         null=True, blank=True, max_length=200, verbose_name=("صفحه پرداخت ترب پی")
+    )
+    azkivam_payment_token = models.CharField(
+        null=True,
+        blank=True,
+        max_length=200,
+        verbose_name=_("توکن پرداخت ازکی وام  "),
+        help_text=_(
+            "توکن پرداخت ترب پی فقط موقعی ساخته میشود که پرداخت با ازکی وام انجام شود وگرنه خالی باید باشد."
+        ),
+    )
+
+    azkivam_payment_page_url = models.CharField(
+        null=True, blank=True, max_length=200, verbose_name=("لینک پرداخت ازکی وام")
     )
     RETURNED_ASK = "RA"
     RETURNED_CONFIRMED = "RC"
@@ -592,9 +611,12 @@ class OrderReceipt(Date):
     torob_transaction_id = models.CharField(null=True, blank=True, max_length=200)
 
     # Failed
-    torob_error_message = models.TextField(null=True, blank=True)
     torob_error_code = models.CharField(null=True, blank=True, max_length=10)
+    torob_error_message = models.TextField(null=True, blank=True)
 
+    # azkivam_reciept
+    azkivam_error_message = models.TextField(null=True, blank=True)
+    azkivam_reciept = models.BooleanField(default=False, verbose_name=_("آیا پرداخت با ازکی وام انجام شده است؟"))
     order = models.OneToOneField(
         Order, on_delete=models.PROTECT, related_name="receipt"
     )
@@ -810,7 +832,7 @@ class SMSCampaignParam(Date):
         base, *rest = self.value_source.split(".", 1)
         path = rest[0] if rest else ""
 
-        
+
         profile = profile or getattr(user, "profile", None)
 
         context = {
@@ -853,10 +875,10 @@ class SMSCampaignParam(Date):
                         print("objj", obj)
                         print(">>> attr_path:", attr_path)
                         print(">>> final value:", obj)
-                    return obj 
+                    return obj
                 except Exception:
                     return ""
-        
+
         except Exception:
             return ""
 
@@ -896,11 +918,6 @@ class SMSCampaignSendLog(models.Model):
 
     sent_at = models.DateTimeField(auto_now_add=True, verbose_name=_("تاریخ ارسال"))
 
-    class Meta:
-        verbose_name = _("📜لاگ ارسال پیامک کمپین")
-        verbose_name_plural = _("📜 لاگ‌های ارسال پیامک")
-
-     
 
     class Meta:
         verbose_name = _("📜لاگ ارسال پیامک کمپین")

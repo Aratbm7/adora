@@ -1,15 +1,13 @@
 import os
 from ast import Dict
 from decimal import Decimal
-from typing import List
+from typing import Any, List, LiteralString
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework.exceptions import ValidationError
 
-from account.models import User
 from adora.models import (
     FAQ,
     Brand,
@@ -27,6 +25,7 @@ from adora.models import (
     ProductImage,
 )
 from adora.tasks import (
+    azkivam_send_create_ticket_request,
     send_torobpay_payment_information,
     send_zarin_payment_information,
 )
@@ -531,30 +530,33 @@ class OrderSerializer(serializers.ModelSerializer):
         """This method calculates the total price for cash purchase orders.
         It applies the cash_discount_percent to the total price of the order items
         and adds the delivery cost.
-        
+
 
         Args:
             order (Order)
         """
         cash_discount_percent = CashDiscountPercent.objects.last()
 
-        total = sum([item.get_total() for item in order.order_items.all()]) 
-        if  cash_discount_percent:
-            print("zarinpal_discount_percent", cash_discount_percent.zarinpal_discount_percent)
+        total = sum([item.get_total() for item in order.order_items.all()])
+        if cash_discount_percent:
+            print(
+                "zarinpal_discount_percent",
+                cash_discount_percent.zarinpal_discount_percent,
+            )
             total -= (total * cash_discount_percent.zarinpal_discount_percent) / 100
         else:
             print("Cash Discoutn Percent not found (message from order serizlier)")
-            
+
         order.total_price = total + order.delivery_cost
         order.save()
-        
+
     def calculate_total_price_for_Installment_purchase(self, order: Order):
         """This mehtod calculates the total price for installment purchase orders.
 
         Args:
             order (Order)
         """
-        total = sum([item.get_total() for item in order.order_items.all()]) 
+        total = sum([item.get_total() for item in order.order_items.all()])
         order.total_price = total + order.delivery_cost
         order.save()
 
@@ -581,7 +583,7 @@ class OrderSerializer(serializers.ModelSerializer):
         order.save()
 
     def create(self, validated_data):
-        order_items_data: List[Dict] = validated_data.pop("order_items")
+        order_items_data: List[dict[str, Any]] = validated_data.pop("order_items")
         # print("order_items_data", order_items_data)
         # print('sold_pric', order_items_data[0]['sold_price'])
         request = self.context.get("request")
@@ -604,7 +606,6 @@ class OrderSerializer(serializers.ModelSerializer):
                     )
                     order_item.save()  # ذخیره‌سازی به‌صورت معمولی، که متد save فراخوانی می‌شود
 
-
                 if order.payment_reference == os.getenv("ZARIN_MERCHANT_NAME"):
                     # Calculate total price for cash purchase
                     self.calculate_total_price_for_cahs_purchase(order)
@@ -617,8 +618,13 @@ class OrderSerializer(serializers.ModelSerializer):
                     self.calculate_total_price_for_Installment_purchase(order)
                     print("helllo_torob")
                     send_torobpay_payment_information(order)
-                    
-                # Use wallet_balance 
+
+                if order.payment_reference == os.getenv("AZKIVAM_MERHCHANT_NAME"):
+                    self.calculate_total_price_for_Installment_purchase(order)
+                    print("hello_azkivam")
+                    azkivam_send_create_ticket_request(order)
+
+                # Use wallet_balance
                 if order.use_wallet_balance:
                     print(" order.use_wallet_balance", order.use_wallet_balance)
                     self.use_user_walet_balance_in_order(order)

@@ -211,6 +211,7 @@ class OneTimeBuyersFilter(admin.SimpleListFilter):
 
 class UserAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     list_display = (
+        "id",
         "get_phone_number",
         "profile_link",
         "get_date_joined",
@@ -282,6 +283,7 @@ class UserAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
 class ProfileAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
 
     list_display = (
+        "id",
         "full_name",
         "get_addresses",
         "id_card",

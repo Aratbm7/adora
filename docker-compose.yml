@@ -15,30 +15,29 @@ services:
       - DJANGO_ENV=development
 
     volumes:
-      # - .:/home/app/backend/
+      - .:/home/app
       - static_volume_lo:/home/app/beckend/core/staticfiles
       - media_volume_lo:/home/app/beckend/media
-
-
+    working_dir: /home/app
     depends_on:
       - redis_master
       - redis_replica
       - db
 
-    develop:
-      watch:
-        # - action: sync+restart
-        - action: sync
-          path: .
-          target: /home/app/
-          ignore:
-            - .git
-            - node_modules
-            - .idea
-            - .vscode
-            - .env
-            - .env.dev
-            - .env.prod
+    # develop:
+    #   watch:
+    #     # - action: sync+restart
+    #     - action: sync
+    #       path: .
+    #       target: /home/app/
+    #       ignore:
+    #         - .git
+    #         - node_modules
+    #         - .idea
+    #         - .vscode
+    #         - .env
+    #         - .env.dev
+    #         - .env.prod
 
   db:
     image: postgres:15-alpine
@@ -73,6 +72,9 @@ services:
       - redis_replica
       - db
       - backend
+    volumes:
+      - .:/home/app
+    working_dir: /home/app
 
   redis_master:
     image: "redis:alpine"

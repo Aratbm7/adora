@@ -3,6 +3,7 @@ import os
 import time
 from typing import Dict, List, Optional, Union
 
+import traceback
 import requests
 from celery import shared_task
 from requests.exceptions import ConnectionError, RequestException, Timeout
@@ -30,14 +31,16 @@ def consider_walet_balance(order: Order, currency: str = "IRT") -> int:
     args:
         - currency [IRI, TOMAN]. default=IRI
     """
-    currency = 10 if currency == "IRT" else 1
+    currency_value = 10 if currency == "IRT" else 1
     if not order.use_wallet_balance:
         return int(order.total_price * currency)
 
     if order.user.profile.wallet_balance >= order.total_price:
         return 0
     else:
-        return int(order.total_price - order.user.profile.wallet_balance) * currency
+        return (
+            int(order.total_price - order.user.profile.wallet_balance) * currency_value
+        )
 
 
 @shared_task
@@ -45,7 +48,7 @@ def send_zarin_payment_information(order: Order):
     try:
         # order = Order.objects.get(id=order_id)
         merchant_id = os.environ.get("ZARIN_MERCHANT_ID")
-        zarin_request_url = os.environ.get("ZARIN_REQUEST_URL")
+        zarin_request_url = os.environ.get("ZARIN_REQUEST_URL", b"")
         zarin_callback_url = os.environ.get("ZARINT_CALLBACK_URL")
         payment_data = {
             "merchant_id": merchant_id,
@@ -57,6 +60,7 @@ def send_zarin_payment_information(order: Order):
                 "mobile": str(order.receiver_phone_number).replace("+98", "0"),
             },
         }
+        print("order", order)
 
         res = requests.post(
             url=zarin_request_url, headers=HEADERS, data=json.dumps(payment_data)
@@ -88,7 +92,6 @@ def send_zarin_payment_information(order: Order):
     except Exception as e:
         print(e)
         return None
-
 
 
 def get_torobpay_access_token() -> Optional[str]:
@@ -237,7 +240,7 @@ def send_torobpay_payment_information(order: Order):
         print(e)
 
 
-MELLIPAYAMK_PATTER_URL = os.environ.get("MELLIPAYAMK_PATTER_URL")
+MELLIPAYAMK_PATTER_URL = os.environ.get("MELLIPAYAMK_PATTER_URL", b"")
 
 
 @shared_task
@@ -254,7 +257,8 @@ def send_order_status_message(phone_number, msg_args: List, text_code: int):
     except Exception:
         print("Exception error")
 
-def get_request(url: str, params: dict = None, retries: int = 3) -> Optional[dict]:
+
+def get_request(url: str, params: dict = {}, retries: int = 3) -> Optional[dict]:
     access_token = get_torobpay_access_token()
     if not access_token:
         print("Failed to retrieve access token")
@@ -271,7 +275,6 @@ def get_request(url: str, params: dict = None, retries: int = 3) -> Optional[dic
             print("Status Code:", res.status_code)
             print("Response Content:", res.text)
             print("url : ", url)
-
 
             try:
                 return res.json()
@@ -358,11 +361,13 @@ def _handle_torobpay_action(order: Order, endpoint_env: str, success_status: str
 
     return response
 
+
 @shared_task
 def torobpay_verify(order: Order):
     return _handle_torobpay_action(
         order, "TOROBPAY_PAYMENT_VERIFY", "TV"
     )  # Torob Verificaion
+
 
 def torobpay_settle(order: Order):
     return _handle_torobpay_action(order, "TOROBPAY_PAYMENT_SETTLE", "C")  # Complete
@@ -380,3 +385,229 @@ def torobpay_cancel(order: Order):
     return _handle_torobpay_action(
         order, "TOROBPAY_PAYMENT_CANCEL", "TC"
     )  # Torob Canceled
+
+
+# Azkivam functions
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+import binascii
+import time
+
+AZKIVAM_MERCHANT_ID = os.getenv("AZKIVAM_MERCHANT_ID", "")
+
+
+def azkivam_encrypted_signature(suburl: str, request_method: str, api_key: str) -> str:
+    timestamp = int(time.time())
+    plain_signature = f"{suburl}#{timestamp}#{request_method}#{api_key}"
+    # decode key from hex
+    key_bytes = binascii.unhexlify(api_key)
+
+    # IV: 16 bytes of zeros
+    iv = bytes(16)
+
+    # create cipher
+    cipher = AES.new(key_bytes, AES.MODE_CBC, iv)
+
+    # PKCS7 padding (AES block size = 16)
+    padded_data = pad(plain_signature.encode(), AES.block_size)
+
+    # encrypt
+    encrypted_bytes = cipher.encrypt(padded_data)
+
+    # return hex string
+    return binascii.hexlify(encrypted_bytes).decode()
+
+
+def azkivam_header(suburl: str, request_method: str, merchant_id: str) -> Dict:
+    api_key = os.getenv("AZKIVAM_API_KEY", "")
+    print(api_key, "api_key")
+    return {
+        "content-type": "application/json",
+        "MerchantId": merchant_id,
+        "Signature": azkivam_encrypted_signature(suburl, request_method, api_key),
+    }
+
+
+AZKIVAM_PROVIDED_ID = os.getenv("AZKIVAM_PROVIDED_ID", "")
+AZKIVAM_BASE_URL = os.getenv("AZKIVAM_BASE_URL", "")
+
+
+def azkivam_send_create_ticket_request(order: Order):
+    try:
+        order_receipt: OrderReceipt = OrderReceipt.objects.create(
+            order=order, azkivam_reciept=True
+        )
+        suburl = os.getenv("AZKIVAM_CREATE_TICKET", "")
+        body_data = {
+            "amount": consider_walet_balance(order),
+            "redirect_uri": "https://adorayadak.ir/a_redirect_uri",
+            "fallback_uri": "https://adorayadak.ir/a_fallback_uri",
+            "provider_id": AZKIVAM_PROVIDED_ID,
+            "mobile_number": str(order.user.phone_number).replace("+98", "0"),
+            "merchant_id": AZKIVAM_MERCHANT_ID,
+            "items": list(
+                map(
+                    lambda item: {
+                        "name": item.product.fa_name,
+                        "count": item.quantity,
+                        "amount": item.sold_price * 10,
+                        "url": f"https://adorayadak.ir/adp-{item.id}/{item.product.fa_name.strip().replace(' ', '-')}",
+                    },
+                    order.order_items.all(),
+                )
+            ),
+        }
+
+        res = requests.post(
+            url=f"{AZKIVAM_BASE_URL}/{suburl}",
+            headers=azkivam_header(suburl, "POST", AZKIVAM_MERCHANT_ID),
+            data=json.dumps(body_data),
+        )
+        res_dict = {}
+        if res.status_code == 200:
+            res_dict = res.json()
+            print(f"Azkivam Ticket is created")
+            response = res_dict.get("result", {})
+            print("respone : ", response)
+            order.azkivam_payment_token = response.get("ticket_id")
+            order.azkivam_payment_page_url = response.get("payment_uri")
+            order.save()
+
+        else:
+            error_message = str(res_dict )
+            print(error_message)
+            order_receipt.torob_error_message = error_message
+            order_receipt.save()
+
+        print(res_dict)
+    except ConnectionError as e:
+        print(e)
+        order_receipt.azkivam_error_message = str(e)
+        order_receipt.save()
+
+    except Exception as e:
+        print(e)
+        order_receipt.azkivam_error_message = str(traceback.format_exc())
+        order_receipt.save()
+
+AZKI_CODES = {
+    0: "Request finished successfully",
+    1: "Internal Server Error",
+    2: "Resource Not Found",
+    4: "Malformed Data",
+    5: "Data Not Found",
+    15: "Access Denied",
+    16: "Transaction already reversed",
+    17: "Ticket Expired",
+    18: "Signature Invalid",
+    19: "Ticket unpayable",
+    20: "Ticket customer mismatch",
+    21: "Insufficient Credit",
+    28: "Unverifiable ticket due to status",
+    32: "Invalid Invoice Data",
+    33: "Contract is not started",
+    34: "Contract is expired",
+    44: "Validation exception",
+    51: "Request data is not valid",
+    59: "Transaction not reversible",
+    60: "Transaction must be in verified state",
+}
+
+def _handle_azkivam_action(
+    order: Order,
+    suburl_env_name: str,
+    success_status: str = "",
+    provide_id: bool = False,
+):
+    suburl = os.getenv(suburl_env_name, "")
+    url = f"{os.getenv('AZKIVAM_BASE_URL')}{suburl}"
+    for attempt in range(3):
+        try:
+            order_receipt: OrderReceipt = order.receipt
+            if not order_receipt:
+                print("Error is from Heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeer")
+                return None
+
+            data = (
+                {
+                    "ticket_id": order.azkivam_payment_token,
+                    "provider_id": AZKIVAM_PROVIDED_ID,
+                }
+                if provide_id
+                else {"ticket_id": order.azkivam_payment_token}
+            )
+            print("dataaaaaaaaaaaaaa", data)
+            res = requests.post(
+                url,
+                data=json.dumps(data),
+                headers=azkivam_header(suburl, "POST", AZKIVAM_MERCHANT_ID),
+                timeout=10,
+            )
+            res_dict = {}
+            if res.status_code == 200:
+                res_dict = res.json()
+                order_receipt.azkivam_error_message = res_dict
+                order_receipt.save()
+
+                if success_status:
+                    order.payment_status = success_status
+                    order.save()
+            else:
+                error_msg = res.json()
+                if not order_receipt.azkivam_error_message:
+                    order_receipt.azkivam_error_message = str(error_msg)
+                else:
+                    order_receipt.azkivam_error_message += str(error_msg )
+                order_receipt.save()
+
+            print("Status Code:", res.status_code)
+            print("Raw Response:", res.text)
+            print("url : ", url)
+
+        except ValueError:
+            print(f"Invalid JSON response (attempt {attempt + 1}): {res.text}")
+        except requests.ConnectionError as ce:
+            print(f"Connection error (attempt {attempt + 1}): {ce}")
+        except requests.Timeout as te:
+            print(f"Timeout error (attempt {attempt + 1}): {te}")
+        except requests.RequestException as e:
+            print(f"Request exception (attempt {attempt + 1}): {e}")
+            time.sleep(2)
+    return res
+
+
+
+def _format_azki_response(res):
+    """اضافه کردن متن کد به خروجی اصلی"""
+    data = res.json()
+    rs_code = data.get("rsCode")
+    data["rsCode_message"] = AZKI_CODES.get(rs_code, "Unknown Code")
+    return data
+
+def azkivam_verify(order: Order):
+    res =  _handle_azkivam_action(order, "AZKIVAM_VERIFY_TICKET", success_status="AV")
+    if res is None:
+        return None
+    return _format_azki_response(res)
+
+
+def azkivam_cancel(order: Order):
+    res =  _handle_azkivam_action(order, "AZKIVAM_CANCEL_TICKET", success_status="AC")
+    if res is None:
+        return None
+    return _format_azki_response(res)
+
+def azkivam_reverse(order: Order):
+    res =  _handle_azkivam_action(
+        order, "AZKIVAM_REVERSE_TICKET", success_status="AR", provide_id=True
+    )
+    if res is None:
+        return None
+    return _format_azki_response(res)
+
+
+def azkivam_status(order: Order):
+    res =  _handle_azkivam_action(order, "AZKIVAM_STATUS_TICKET")
+    if res is None:
+        return None
+    return _format_azki_response(res)

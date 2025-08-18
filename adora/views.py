@@ -51,7 +51,9 @@ from adora.serializers import (
     ProductSearchSerializer,
     ProductTorobSerilizers,
 )
-from adora.tasks import get_torobpay_access_token, send_order_status_message
+from adora.tasks import (get_torobpay_access_token,
+                        send_order_status_message,
+                        azkivam_verify)
 from core.permissions import (  # object_level_permissions,
     object_level_permissions_restricted_actions,
     personal_permissions,
@@ -469,11 +471,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
 
     @action(
-    detail=False,
-    methods=["get"],
-    # url_path="zarinpal-payment-verification",
-    url_path="zarinpal-payment-verified",
-    permission_classes=[permissions.IsAuthenticated],
+        detail=False,
+        methods=["get"],
+        # url_path="zarinpal-payment-verification",
+        url_path="zarinpal-payment-verified",
+        permission_classes=[permissions.IsAuthenticated],
     )
     def zarinpal_payment_verified(self, request: Request):
         order_receipt = None
@@ -484,7 +486,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if not authority or not tracking_number or not payment_status:
             return Response(
-                {"message": "Missing required parameters: payment_status, authority, or tracking_number."},
+                {
+                    "message": "Missing required parameters: payment_status, authority, or tracking_number."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -504,7 +508,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if order_receipt.authority != authority:
             return Response(
-                {"message": f"Invalid authority: {authority} does not match this order."},
+                {
+                    "message": f"Invalid authority: {authority} does not match this order."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -519,13 +525,19 @@ class OrderViewSet(viewsets.ModelViewSet):
 
                 verify_response = requests.post(
                     zarin_verify_url,
-                    headers={"accept": "application/json", "content-type": "application/json"},
+                    headers={
+                        "accept": "application/json",
+                        "content-type": "application/json",
+                    },
                     data=json.dumps(verify_payload),
                 )
 
                 if verify_response.status_code != 200:
                     return Response(
-                        {"message": "Zarinpal server returned error", "status": verify_response.status_code},
+                        {
+                            "message": "Zarinpal server returned error",
+                            "status": verify_response.status_code,
+                        },
                         status=status.HTTP_502_BAD_GATEWAY,
                     )
 
@@ -595,7 +607,10 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             else:
                 return Response(
-                    {"message": "Unexpected response from Zarinpal.", "response": verify_json},
+                    {
+                        "message": "Unexpected response from Zarinpal.",
+                        "response": verify_json,
+                    },
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
 
@@ -618,22 +633,22 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
 
     @swagger_auto_schema(
-    manual_parameters=[
-        openapi.Parameter(
-            "access_token",
-            openapi.IN_QUERY,
-            description="The Torob Pay access token.",
-            type=openapi.TYPE_STRING,
-        ),
-        openapi.Parameter(
-            "tracking_number",
-            openapi.IN_QUERY,
-            description="Order tracking number.",
-            type=openapi.TYPE_STRING,
-        ),
-    ],
-    responses={200: "OK", 400: "Bad Request"},
-)
+        manual_parameters=[
+            openapi.Parameter(
+                "access_token",
+                openapi.IN_QUERY,
+                description="The Torob Pay access token.",
+                type=openapi.TYPE_STRING,
+            ),
+            openapi.Parameter(
+                "tracking_number",
+                openapi.IN_QUERY,
+                description="Order tracking number.",
+                type=openapi.TYPE_STRING,
+            ),
+        ],
+        responses={200: "OK", 400: "Bad Request"},
+    )
     @action(
         detail=False,
         methods=["get"],
@@ -652,14 +667,18 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             if not tracking_number or not access_token:
                 return Response(
-                    {"message": "Missing required parameters: tracking_number or torob_access_token"},
+                    {
+                        "message": "Missing required parameters: tracking_number or torob_access_token"
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             order = Order.objects.filter(tracking_number=tracking_number).first()
             if not order:
                 return Response(
-                    {"message": f"No order found with tracking number {tracking_number}."},
+                    {
+                        "message": f"No order found with tracking number {tracking_number}."
+                    },
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
@@ -691,11 +710,13 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             if verify_data.get("successful"):
                 print("Payment verification successful")
-                transaction_id = verify_data.get("response", {}).get("transactionId", "")
-                order.payment_status='TV'
+                transaction_id = verify_data.get("response", {}).get(
+                    "transactionId", ""
+                )
+                order.payment_status = "TV"
                 order.save()
 
-                order_receipt.torob_error_message = verify_data
+                order_receipt.azkivam_error_message = verify_data
                 order_receipt.torob_transaction_id = transaction_id
                 order_receipt.save()
 
@@ -708,8 +729,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                 settle_data = settle_response.json()
 
                 if settle_data.get("successful"):
-                    order_receipt.torob_error_message = settle_data
-                    order_receipt.torob_transaction_id = settle_data.get("response", {}).get("transactionId", "")
+                    order_receipt.azkivam_error_message = settle_data
+                    order_receipt.torob_transaction_id = settle_data.get(
+                        "response", {}
+                    ).get("transactionId", "")
                     order.save()
                     order.payment_status = "C"
                     order.save()
@@ -722,9 +745,13 @@ class OrderViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_200_OK,
                     )
                 else:
-                    error_message = settle_data.get("errorData", {}).get("message", "Unknown error")
-                    error_code = settle_data.get("errorData", {}).get("errorCode", "Unknown code")
-                    order_receipt.torob_error_message += error_message
+                    error_message = settle_data.get("errorData", {}).get(
+                        "message", "Unknown error"
+                    )
+                    error_code = settle_data.get("errorData", {}).get(
+                        "errorCode", "Unknown code"
+                    )
+                    order_receipt.azkivam_error_message += error_message
                     order_receipt.torob_error_code = error_code
                     order_receipt.save()
                     order.payment_status = "TV"
@@ -739,9 +766,13 @@ class OrderViewSet(viewsets.ModelViewSet):
                     )
 
             else:
-                error_message = verify_data.get("errorData", {}).get("message", "Unknown error")
-                error_code = verify_data.get("errorData", {}).get("errorCode", "Unknown code")
-                order_receipt.torob_error_message = error_message
+                error_message = verify_data.get("errorData", {}).get(
+                    "message", "Unknown error"
+                )
+                error_code = verify_data.get("errorData", {}).get(
+                    "errorCode", "Unknown code"
+                )
+                order_receipt.azkivam_error_message = error_message
                 order_receipt.torob_error_code = error_code
                 order_receipt.save()
                 order.payment_status = "F"
@@ -759,15 +790,17 @@ class OrderViewSet(viewsets.ModelViewSet):
             error_message = f"Connection error: {str(e)}"
             print(error_message)
             if order_receipt:
-                order_receipt.torob_error_message = error_message
+                order_receipt.azkivam_error_message = error_message
                 order_receipt.save()
-            return Response({"message": error_message}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"message": error_message}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         except Exception:
             error_message = traceback.format_exc()
             print(error_message)
             if order_receipt:
-                order_receipt.torob_error_message = error_message
+                order_receipt.azkivam_error_message = error_message
                 order_receipt.save()
             return Response(
                 {"message": "An unexpected error occurred.", "trace": error_message},
@@ -837,8 +870,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                 )
 
             header = {
-                "content-type": "application/json",
                 "Authorization": f"Bearer {access_token}",
+                "content-type": "application/json",
             }
 
             res = requests.get(
@@ -868,7 +901,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"message": f"An unexpected error!!"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
 
     @action(
         detail=False,
@@ -932,6 +964,141 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"message": f"An unexpected error!!"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="azkivam-payment-verification",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def azkivam_payment_verification(self, request:Request):
+        try:
+            tracking_number = request.query_params.get("tracking_number")
+            if not tracking_number:
+                return Response(
+                    {
+                    "message": "Missing required parameters: tracking_number!!"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            order = Order.objects.filter(tracking_number=tracking_number).first()
+            if not order:
+                return Response(
+                    {
+                        "message": f"No order found with tracking number {tracking_number}."
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if not order.azkivam_payment_token:
+                return Response(
+                    {"message": "No order payment token found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+
+            order_receipt: OrderReceipt = order.receipt
+            if not order_receipt:
+                return Response(
+                    {"message": "No order receipt found for this order."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            res = azkivam_verify(order)
+
+            if res is None:
+                return Response({"message":"Some error occured please see order receipt", "trace":str(traceback.format_exc())},
+                                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            if res.status_code == 200:
+                self._success_sms(order)
+            else:
+                self._failed_sms(order)
+
+            return Response({"message":"Response is taken from azki see data", "data":res.json()})
+
+        except requests.exceptions.RequestException as e:
+            error_message = f"Connection error: {str(e)}"
+            print(error_message)
+            if order_receipt:
+                order_receipt.azkivam_error_message = error_message
+                order_receipt.save()
+            return Response(
+                {"message": error_message}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception:
+            error_message = traceback.format_exc()
+            print(error_message)
+            if order_receipt:
+                order_receipt.azkivam_error_message = error_message
+                order_receipt.save()
+            return Response(
+                {"message": "An unexpected error occurred.", "trace": error_message},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="azkivam-payment-failed",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def azkivam_payment_failed(self, request:Response):
+        try:
+            tracking_number = request.query_params.get("tracking_number")
+            if not tracking_number:
+                return Response(
+                    {
+                    "message": "Missing required parameters: tracking_number!!"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            order = Order.objects.filter(tracking_number=tracking_number).first()
+            if not order:
+                return Response(
+                    {
+                        "message": f"No order found with tracking number {tracking_number}."
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if not order.azkivam_payment_token:
+                return Response(
+                    {"message": "No order payment token found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+
+            order_receipt: OrderReceipt = order.receipt
+            if not order_receipt:
+                return Response(
+                    {"message": "No order receipt found for this order."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            order_receipt.azkivam_error_message = "پرداخت ناموفق"
+            order_receipt.save()
+            order.payment_status = "F"
+            order.save()
+
+            self._failed_sms(order)
+            return Response({"message": "order status failed changed"})
+
+        except Exception:
+            error_message = traceback.format_exc()
+            print(error_message)
+            if order_receipt:
+                order_receipt.azkivam_error_message = error_message
+                order_receipt.save()
+            return Response(
+                {"message": "An unexpected error occurred.", "trace": error_message},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+
 
 
 class PostViewSet(ModelViewSet):
