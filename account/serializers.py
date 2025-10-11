@@ -1,5 +1,4 @@
-from rest_framework import serializers
-from account.models import User, Profile, Address
+from rest_framework import serializers from account.models import User, Profile, Address
 from phonenumber_field.serializerfields import PhoneNumberField
 
 

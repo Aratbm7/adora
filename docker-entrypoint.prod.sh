@@ -56,7 +56,7 @@
 #     --user adora_u --group adora_g 
 # # exec gunicorn --workers $NUM_WORKERS --bind unix:$SOCKET_PATH $WSGI_APPLICATION
 
-#!/usr/bin/env bash
+# !/usr/bin/env bash
 
 echo "Waiting for postgres db to start.."
 ./wait-for-it.sh db:5432 --timeout=30 --strict -- echo "PostgreSQL is up - continuing"

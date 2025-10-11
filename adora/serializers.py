@@ -444,6 +444,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             "alt": obj.category.alt,
         }
 
+
     def get_material(self, obj):
         return {"id": obj.material.id, "name": obj.material.material_name}
 
@@ -524,6 +525,9 @@ class OrderSerializer(serializers.ModelSerializer):
             "returned_asked_reason",
             "torob_payment_page_url",
             "torob_payment_token",
+            "azkivam_payment_token",
+            "azkivam_payment_page_url",
+
         )
 
     def calculate_total_price_for_cahs_purchase(self, order: Order):

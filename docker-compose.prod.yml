@@ -16,6 +16,7 @@ services:
       - ./.env.prod
     environment:
       - DJANGO_ENV=production
+    entrypoint: ["/bin/bash", "-c", "./docker-entrypoint.prod.sh"]
     depends_on:
       db:
         condition: service_healthy

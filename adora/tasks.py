@@ -90,7 +90,7 @@ def send_zarin_payment_information(order: Order):
         OrderReceipt.objects.create(connection_error=True, order=order)
 
     except Exception as e:
-        print(e)
+        print(traceback.format_exc())
         return None
 
 
@@ -237,7 +237,7 @@ def send_torobpay_payment_information(order: Order):
 
     except Exception as e:
         print(f"There is some error on get access token function from Torob Pay")
-        print(e)
+        print(traceback.format_exc())
 
 
 MELLIPAYAMK_PATTER_URL = os.environ.get("MELLIPAYAMK_PATTER_URL", b"")
@@ -474,7 +474,7 @@ def azkivam_send_create_ticket_request(order: Order):
             order.save()
 
         else:
-            error_message = str(res_dict )
+            error_message = str(res_dict)
             print(error_message)
             order_receipt.torob_error_message = error_message
             order_receipt.save()
@@ -486,9 +486,10 @@ def azkivam_send_create_ticket_request(order: Order):
         order_receipt.save()
 
     except Exception as e:
-        print(e)
+        print(traceback.format_exc())
         order_receipt.azkivam_error_message = str(traceback.format_exc())
         order_receipt.save()
+
 
 AZKI_CODES = {
     0: "Request finished successfully",
@@ -512,6 +513,7 @@ AZKI_CODES = {
     59: "Transaction not reversible",
     60: "Transaction must be in verified state",
 }
+
 
 def _handle_azkivam_action(
     order: Order,
@@ -557,7 +559,7 @@ def _handle_azkivam_action(
                 if not order_receipt.azkivam_error_message:
                     order_receipt.azkivam_error_message = str(error_msg)
                 else:
-                    order_receipt.azkivam_error_message += str(error_msg )
+                    order_receipt.azkivam_error_message += str(error_msg)
                 order_receipt.save()
 
             print("Status Code:", res.status_code)
@@ -576,7 +578,6 @@ def _handle_azkivam_action(
     return res
 
 
-
 def _format_azki_response(res):
     """اضافه کردن متن کد به خروجی اصلی"""
     data = res.json()
@@ -584,21 +585,23 @@ def _format_azki_response(res):
     data["rsCode_message"] = AZKI_CODES.get(rs_code, "Unknown Code")
     return data
 
+
 def azkivam_verify(order: Order):
-    res =  _handle_azkivam_action(order, "AZKIVAM_VERIFY_TICKET", success_status="AV")
+    res = _handle_azkivam_action(order, "AZKIVAM_VERIFY_TICKET", success_status="AV")
     if res is None:
         return None
     return _format_azki_response(res)
 
 
 def azkivam_cancel(order: Order):
-    res =  _handle_azkivam_action(order, "AZKIVAM_CANCEL_TICKET", success_status="AC")
+    res = _handle_azkivam_action(order, "AZKIVAM_CANCEL_TICKET", success_status="AC")
     if res is None:
         return None
     return _format_azki_response(res)
 
+
 def azkivam_reverse(order: Order):
-    res =  _handle_azkivam_action(
+    res = _handle_azkivam_action(
         order, "AZKIVAM_REVERSE_TICKET", success_status="AR", provide_id=True
     )
     if res is None:
@@ -607,7 +610,7 @@ def azkivam_reverse(order: Order):
 
 
 def azkivam_status(order: Order):
-    res =  _handle_azkivam_action(order, "AZKIVAM_STATUS_TICKET")
+    res = _handle_azkivam_action(order, "AZKIVAM_STATUS_TICKET")
     if res is None:
         return None
     return _format_azki_response(res)
