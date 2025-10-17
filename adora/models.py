@@ -1,7 +1,7 @@
 from decimal import Decimal
 import random
 import string
-from datetime import  timedelta
+from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -291,6 +291,9 @@ class Order(Date):
     TOROB_VERIFIED = "TV"
     TOROB_CANCELED = "TC"
     TOROB_REVERT = "TR"
+    SNAP_VERIFIED = "SV"
+    SNAP_CANCELED = "SC"
+    SNAP_REVERT = "SR"
     AZKIVAM_VERIFY = "AV"
     AZKIVAM_CANCEL = "AC"
     AZKIVAM_REVERSE = "AR"
@@ -298,12 +301,15 @@ class Order(Date):
         (PENDING_STATUS, ("در انتظار")),
         (PAYMENT_STATUS_COMPLETE, "موفق"),
         (PAYMENT_STATUS_FAILED, "نا موفق"),
-        (TOROB_CANCELED ,_("کنسل شده‌ (ترب)")),
-        (TOROB_REVERT ,_("لغو شده‌ (ترب)")),
+        (TOROB_CANCELED, _("کنسل شده‌ (ترب)")),
+        (TOROB_REVERT, _("لغو شده‌ (ترب)")),
         (TOROB_VERIFIED, _("وریفای شده در انتظار settlement")),
         (AZKIVAM_VERIFY, _("از کی وام وریفای")),
         (AZKIVAM_CANCEL, _("از کی وام کنسل")),
         (AZKIVAM_REVERSE, _("ازکی وام رورس")),
+        (SNAP_CANCELED, _("کنسل شده‌ (اسنپ)")),
+        (SNAP_REVERT, _("لغو شده‌ (اسنپ)")),
+        (SNAP_VERIFIED, _("وریفای شده در انتظار settlement")),
     ]
 
     payment_status = models.CharField(
@@ -434,6 +440,18 @@ class Order(Date):
     torob_payment_page_url = models.CharField(
         null=True, blank=True, max_length=200, verbose_name=("صفحه پرداخت ترب پی")
     )
+    snap_payment_token = models.CharField(
+        null=True,
+        blank=True,
+        max_length=200,
+        verbose_name=_("توکن پرداخت اسنپ پی"),
+        help_text=_(
+            "توکن پرداخت اسنپ پی فقط موقعی ساخته میشود که پرداخت با ترب پی انجام شود وگرنه خالی باید باشد."
+        ),
+    )
+    snap_payment_page_url = models.CharField(
+        null=True, blank=True, max_length=200, verbose_name=("صفحه پرداخت اسنپ پی")
+    )
     azkivam_payment_token = models.CharField(
         null=True,
         blank=True,
@@ -558,21 +576,27 @@ class OrderItem(models.Model):
             price = self._get_discounted_price()
 
             # اگر سفارش با زرین‌پال پرداخت شده باشد، تخفیف نقدی اعمال کن
-            if self.order.payment_reference == os.getenv("ZARIN_MERCHANT_NAME", 'zarinpal'):
+            if self.order.payment_reference == os.getenv(
+                "ZARIN_MERCHANT_NAME", "zarinpal"
+            ):
                 print(f"Come from model save {self.order.payment_reference}")
                 try:
                     cash_discount = CashDiscountPercent.objects.last()
                     if cash_discount:
-                        discount_percent = Decimal(cash_discount.zarinpal_discount_percent) / 100
+                        discount_percent = (
+                            Decimal(cash_discount.zarinpal_discount_percent) / 100
+                        )
                         price = price * (1 - discount_percent)
                 except CashDiscountPercent.DoesNotExist:
-                    print("#"*50)
+                    print("#" * 50)
                     print("Some error occured in OrderItem save method")
-                    print("#"*50)
+                    print("#" * 50)
 
             self.sold_price = round(price)
 
-        super().save(*args, **kwargs)# اگر sold_price هنوز مقدار نداشته باشد، آن را تنظیم کن
+        super().save(
+            *args, **kwargs
+        )  # اگر sold_price هنوز مقدار نداشته باشد، آن را تنظیم کن
         # if not self.sold_price:
         #     self.sold_price = round(self._get_discounted_price())   # گرد کردن قیمت نهایی
 
@@ -616,7 +640,17 @@ class OrderReceipt(Date):
 
     # azkivam_reciept
     azkivam_error_message = models.TextField(null=True, blank=True)
-    azkivam_reciept = models.BooleanField(default=False, verbose_name=_("آیا پرداخت با ازکی وام انجام شده است؟"))
+    azkivam_reciept = models.BooleanField(
+        default=False, verbose_name=_("آیا پرداخت با ازکی وام انجام شده است؟")
+    )
+
+    snap_reciept = models.BooleanField(default=False)
+    snap_transaction_id = models.CharField(null=True, blank=True, max_length=200)
+
+    # Failed
+    snap_error_code = models.CharField(null=True, blank=True, max_length=10)
+    snap_error_message = models.TextField(null=True, blank=True)
+
     order = models.OneToOneField(
         Order, on_delete=models.PROTECT, related_name="receipt"
     )
@@ -832,13 +866,12 @@ class SMSCampaignParam(Date):
         base, *rest = self.value_source.split(".", 1)
         path = rest[0] if rest else ""
 
-
         profile = profile or getattr(user, "profile", None)
 
         context = {
             "user": user,
             "profile": profile,
-            "campaign": campaign or  self.campaign,
+            "campaign": campaign or self.campaign,
         }
 
         obj = context.get(base)
@@ -886,7 +919,7 @@ class SMSCampaignParam(Date):
     #     return f"{self.campaign.name} - {self.key}"
     def __str__(self):
         if not self.is_static:
-        # نمایش نام خوانا از لیست انتخابی
+            # نمایش نام خوانا از لیست انتخابی
             label = dict(settings.ALLOWED_SMS_CAMPAIGN_PARAM_PATHS).get(
                 self.value_source, self.value_source
             )
@@ -915,16 +948,15 @@ class SMSCampaignSendLog(models.Model):
     )
 
     status_code = models.IntegerField(_("کد وضعیت HTTP"), default=0)
-
     sent_at = models.DateTimeField(auto_now_add=True, verbose_name=_("تاریخ ارسال"))
-
 
     class Meta:
         verbose_name = _("📜لاگ ارسال پیامک کمپین")
         verbose_name_plural = _("📜 لاگ‌های ارسال پیامک")
 
-    def __str__(self):
-        return f"{self.user} - {'موفق' if self.is_successful else 'ناموفق'}"
+
+def __str__(self):
+    return f"{self.user} - {'موفق' if self.is_successful else 'ناموفق'}"
 
 
 class TroboMerchantToken(models.Model):
@@ -934,6 +966,18 @@ class TroboMerchantToken(models.Model):
     class Meta:
         verbose_name = _("🔐 توکن ترب پی")
         verbose_name_plural = _("🔐 توکن ها ترب")
+
+    def is_expired(self):
+        return timezone.now() - self.updated_at > timedelta(minutes=59)
+
+
+class SnapPayAccessToken(models.Model):
+    token = models.TextField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("🔐 Snap pay toekn")
+        verbose_name_plural = _("🔐 Snap pay tokens")
 
     def is_expired(self):
         return timezone.now() - self.updated_at > timedelta(minutes=59)

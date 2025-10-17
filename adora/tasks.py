@@ -1,16 +1,17 @@
 import json
 import os
 import time
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Literal, Optional
 
 import traceback
 import requests
 from celery import shared_task
 from requests.exceptions import ConnectionError, RequestException, Timeout
-from urllib3.exceptions import NameResolutionError
+
+# from urllib3.exceptions import NameResolutionError
 
 # from account.models import User
-from adora.models import Order, OrderReceipt, TroboMerchantToken
+from adora.models import Order, OrderReceipt, TroboMerchantToken, SnapPayAccessToken
 
 # from adora.models import SMSCampaign, SMSCampaignSendLog
 # from account.models import User
@@ -33,7 +34,7 @@ def consider_walet_balance(order: Order, currency: str = "IRT") -> int:
     """
     currency_value = 10 if currency == "IRT" else 1
     if not order.use_wallet_balance:
-        return int(order.total_price * currency)
+        return int(order.total_price) * currency_value
 
     if order.user.profile.wallet_balance >= order.total_price:
         return 0
@@ -97,6 +98,7 @@ def send_zarin_payment_information(order: Order):
 def get_torobpay_access_token() -> Optional[str]:
     # مرحله ۱: بررسی توکن معتبر در دیتابیس
     try:
+        print("We started.....")
         latest_token = TroboMerchantToken.objects.last()
         if latest_token and not latest_token.is_expired():
             return latest_token.token
@@ -258,16 +260,35 @@ def send_order_status_message(phone_number, msg_args: List, text_code: int):
         print("Exception error")
 
 
-def get_request(url: str, params: dict = {}, retries: int = 3) -> Optional[dict]:
-    access_token = get_torobpay_access_token()
+def _choose_getaway_header(
+    getway_name: Literal["snappay", "torobpay"], access_token: str
+) -> dict:
+    if getway_name == "torobpay":
+        return {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}",
+        }
+
+    if getway_name == "snappay":
+        return {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": f"Base {access_token}",
+        }
+
+
+def get_request(
+    url: str,
+    get_access_token: Callable[[], Optional[str]],
+    getway_name: Literal["torobpay", "snappay"],
+    params: dict = {},
+    retries: int = 3,
+) -> Optional[dict]:
+    access_token = get_access_token()
     if not access_token:
         print("Failed to retrieve access token")
         return None
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {access_token}",
-    }
+    headers = _choose_getaway_header(getway_name, access_token)
 
     for attempt in range(retries):
         try:
@@ -291,16 +312,19 @@ def get_request(url: str, params: dict = {}, retries: int = 3) -> Optional[dict]
     return None
 
 
-def post_request(url: str, data: dict, retries: int = 3) -> Optional[dict]:
-    access_token = get_torobpay_access_token()
+def post_request(
+    url: str,
+    data: dict,
+    get_access_token: Callable[[], Optional[str]],
+    getway_name: Literal["snappay", "torobpay"],
+    retries: int = 3,
+) -> Optional[dict]:
+    access_token = get_access_token()
     if not access_token:
         print("Failed to retrieve access token")
         return None
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {access_token}",
-    }
+    headers = _choose_getaway_header(getway_name, access_token)
 
     for attempt in range(retries):
         try:
@@ -329,14 +353,36 @@ def post_request(url: str, data: dict, retries: int = 3) -> Optional[dict]:
 
 def torobpay_status(order: Order):
     url = f"{os.getenv('TOROBPAY_BASE_URL')}/{os.getenv('TOROBPAY_PAYMENT_STATUS')}"
-    response = get_request(url, params={"paymentToken": order.torob_payment_token})
+    response = get_request(
+        url,
+        get_torobpay_access_token,
+        "torobpay",
+        params={"paymentToken": order.torob_payment_token},
+    )
+    print(response)
+    return response
+
+
+def snappay_status(order: Order):
+    url = f"{os.getenv('SNAP_PAY_BASE_URL')}{os.getenv('SNAP_PAY_STATUS_ENDPOINT')}"
+    response = get_request(
+        url,
+        get_torobpay_access_token,
+        "snappay",
+        params={"paymentToken": order.snap_payment_token},
+    )
     print(response)
     return response
 
 
 def _handle_torobpay_action(order: Order, endpoint_env: str, success_status: str):
     url = f"{os.getenv('TOROBPAY_BASE_URL')}/{os.getenv(endpoint_env)}"
-    response = post_request(url, {"paymentToken": order.torob_payment_token})
+    response = post_request(
+        url,
+        {"paymentToken": order.torob_payment_token},
+        get_torobpay_access_token,
+        "torobpay",
+    )
 
     order_receipt: OrderReceipt = order.receipt
     if not order_receipt:
@@ -360,6 +406,60 @@ def _handle_torobpay_action(order: Order, endpoint_env: str, success_status: str
         order_receipt.save()
 
     return response
+
+
+def _handle_snap_action(order: Order, endpoint_env: str, success_status: str):
+    url = f"{os.getenv('SNAP_PAY_BASE_URL')}{os.getenv(endpoint_env)}"
+    response = post_request(
+        url,
+        {"paymentToken": order.torob_payment_token},
+        get_snap_pay_access_token,
+        "snappay",
+    )
+
+    order_receipt: OrderReceipt = order.receipt
+    if not order_receipt:
+        return None
+
+    if response.get("successful"):
+        print(f"{endpoint_env} successful")
+        transaction_id = response.get("response", {}).get("transactionId", "")
+        order_receipt.snap_error_message = response
+        order_receipt.snap_transaction_id = transaction_id
+        order_receipt.save()
+
+        order.payment_status = success_status
+        order.save()
+    else:
+        error_msg = str(response.get("errorData", {}))
+        if not order_receipt.snap_error_message:
+            order_receipt.snap_error_message = error_msg
+        else:
+            order_receipt.snap_error_message += error_msg
+        order_receipt.save()
+
+    return response
+
+
+@shared_task
+def snappay_verify(order: Order):
+    return _handle_snap_action(
+        order, "SNAP_PAY_VERIFY_ENDPOINT", "SV"
+    )  # Snap Verificaion
+
+
+def snappay_settle(order: Order):
+    return _handle_snap_action(order, "SNAP_PAY_SETTLE_ENDPOINT", "C")  # Complete
+
+
+@shared_task
+def snappay_revert(order: Order):
+    return _handle_snap_action(order, "SNAP_PAY_REVERT_ENDPOINT", "SR")  # Snap Reverted
+
+
+@shared_task
+def snappay_cancel(order: Order):
+    return _handle_snap_action(order, "SNAP_PAY_CANCEL_ENDPOINT", "SC")  # Snap Canceled
 
 
 @shared_task
@@ -614,3 +714,164 @@ def azkivam_status(order: Order):
     if res is None:
         return None
     return _format_azki_response(res)
+
+
+SNAP_PAY_BASE64 = os.getenv("SNAP_PAY_BASE64_TOKEN")
+SNAP_PAY_USERNAME = os.getenv("SNAP_PAY_USERNAME")
+SNAP_PAY_PASSWORD = os.getenv("SNAP_PAY_PASSWORD")
+SNAP_PAY_BASE_URL = os.getenv("SNAP_PAY_BASE_URL")
+
+
+from urllib.parse import urljoin
+
+
+def get_snap_pay_access_token() -> Optional[str]:
+    try:
+        latest_token = SnapPayAccessToken.objects.last()
+        if latest_token and not latest_token.is_expired():
+            return latest_token.token
+    except Exception as e:
+        print("⚠️ خطا در واکشی توکن از دیتابیس:", e)
+
+    # دریافت توکن جدید
+    print("🌀 دریافت توکن جدید از SnappPay...")
+
+    header = {
+        "Authorization": f"Basic {os.getenv('SNAP_PAY_BASE64_TOKEN')}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    data = {
+        "grant_type": "password",
+        "scope": "online-merchant",
+        "username": os.getenv("SNAP_PAY_USER_NAME"),
+        "password": os.getenv("SNAP_PAY_PASSWORD"),
+    }
+
+    oauth_url = urljoin(
+        os.getenv("SNAP_PAY_BASE_URL"), os.getenv("SNAP_PAY_JWT_ENDPOINT")
+    )
+    print("🔗 درخواست توکن به:", oauth_url)
+
+    for attempt in range(1, 4):
+        try:
+            print(f"🔄 تلاش {attempt} برای دریافت توکن...")
+            res = requests.post(url=oauth_url, headers=header, data=data, timeout=10)
+            print("Response status:", res.status_code)
+            print("Response text:", res.text)
+
+            if res.status_code == 200:
+                res_dict = res.json()
+                token = res_dict.get("access_token")
+                if token:
+                    SnapPayAccessToken.objects.create(token=token)
+                    print("✅ توکن جدید ذخیره شد.")
+                    return token
+                else:
+                    print("❌ access_token در پاسخ موجود نیست.")
+                    break
+            else:
+                print("❌ پاسخ نامعتبر:", res.status_code)
+        except Exception as e:
+            print("🔥 خطای ناشناخته:", e)
+            break
+
+    print("❌ دریافت توکن پس از ۳ بار تلاش ناموفق بود.")
+    return None
+
+
+@shared_task
+def send_snap_payment_information(order: Order):
+    try:
+        order_receipt: OrderReceipt = OrderReceipt.objects.create(
+            order=order, snap_reciept=True
+        )
+        # print(Order)
+        snap_base_url = os.getenv("SNAP_PAY_BASE_URL")
+        snap_payment_endpoint = os.getenv("SNAP_PAY_VERIFY_ENDPOINT")
+
+        access_token = get_snap_pay_access_token()
+        # if type(access_token) != str:
+        #     order_receipt.torob_error_message = access_token
+        #     order_receipt.save()
+        #     return
+
+        print("access_token", access_token)
+        header = {
+            "content-type": "application/x-www-form-urlencoded",
+            "Authorization": f"Base {access_token}",
+        }
+
+        payment_data = {
+            "amount": consider_walet_balance(order),
+            "discountAmount": (
+                int(order.user.profile.wallet_balance) * 10
+                if order.use_wallet_balance
+                else 0
+            ),
+            "externalSourceAmount": 0,
+            "mobile": str(order.user.phone_number).replace("+98", "0"),
+            "paymentMethodTypeDto": "INSTALLMENT",
+            "returnURL": os.getenv("SNAP_PAY_RETURN_TO_THIS_URL"),
+            "transactionId": order.tracking_number,
+            "cartList": [
+                {
+                    "cartId": order.tracking_number,
+                    "totalAmount": consider_walet_balance(order),
+                    "isShipmentInclude": True if order.delivery_cost else False,
+                    "shippingAmount": int(order.delivery_cost) * 10,
+                    "isTaxIncluded": False,
+                    "taxAmount": 0,
+                    "cartItems": list(
+                        map(
+                            lambda item: {
+                                "id": str(item.id),
+                                "amount": item.sold_price * 10,
+                                "category": "ابزار و یدک خودرو",
+                                "count": item.quantity,
+                                "name": item.product.fa_name,
+                                "commissionType": 10801,
+                            },
+                            order.order_items.all(),
+                        )
+                    ),
+                }
+            ],
+        }
+
+        print(payment_data)
+
+        res = requests.post(
+            url=f"{snap_base_url}{snap_payment_endpoint}",
+            headers=header,
+            data=json.dumps(payment_data),
+        )
+        res_dict = res.json()
+
+        if res_dict.get("successful", False):
+            print(f"Payment Token successfully is taked")
+            response = res_dict.get("response", {})
+            print("respone : ", response)
+            order.snap_payment_token = response.get("paymentToken")
+            order.snap_payment_page_url = response.get("paymentPageUrl")
+            order.save()
+
+        else:
+            error_data = res_dict.get("errorData", {})
+            error_message = (
+                f"{error_data.get('errorCode', '')}\n {error_data.get('message', '')}"
+            )
+            print(error_message)
+            order_receipt.snap_error_message = error_message
+            order_receipt.save()
+
+        print(res_dict)
+    except ConnectionError as e:
+        print(f"There is a problem to connecct to Torob Pay to get payment token ")
+        print(e)
+        order_receipt.snap_error_message = str(e)
+        order_receipt.save()
+
+    except Exception as e:
+        print(f"There is some error on get access token function from Torob Pay")
+        print(traceback.format_exc())

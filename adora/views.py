@@ -51,9 +51,12 @@ from adora.serializers import (
     ProductSearchSerializer,
     ProductTorobSerilizers,
 )
-from adora.tasks import (get_torobpay_access_token,
-                        send_order_status_message,
-                        azkivam_verify)
+from adora.tasks import (
+    get_torobpay_access_token,
+    get_snap_pay_access_token,
+    send_order_status_message,
+    azkivam_verify,
+)
 from core.permissions import (  # object_level_permissions,
     object_level_permissions_restricted_actions,
     personal_permissions,
@@ -312,10 +315,10 @@ class CommentViewSet(ModelViewSet):
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
-    permission_classes = [
-        personal_permissions({"u": 31, "a": 63, "o": 3}),
-        object_level_permissions_restricted_actions({"u": 31, "a": 63, "o": 3}),
-    ]
+    # permission_classes = [
+    #     personal_permissions({"u": 31, "a": 63, "o": 3}),
+    #     object_level_permissions_restricted_actions({"u": 31, "a": 63, "o": 3}),
+    # ]
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -662,7 +665,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             TOROBPAY_PAYMENT_VERIFY = os.getenv("TOROBPAY_PAYMENT_VERIFY")
             TOROBPAY_PAYMENT_SETTLE = os.getenv("TOROBPAY_PAYMENT_SETTLE")
 
-            access_token = request.query_params.get("torob_access_token", "")
+            # access_token = request.query_params.get("torob_access_token", "")
+            access_token = get_torobpay_access_token()
             tracking_number = request.query_params.get("tracking_number", "")
 
             if not tracking_number or not access_token:
@@ -905,6 +909,253 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(
         detail=False,
         methods=["get"],
+        url_path="snap-check-merchant-eligible",
+        # permission_classes=[permissions.IsAuthenticated],
+    )
+    def snap_merchant_eligible(self, request):
+        try:
+            SNAP_PAY_BASE_URL = os.getenv("SNAP_PAY_BASE_URL")
+            SNAP_PAY_ELIGIBLE_ENDPOINT = os.getenv("SNAP_PAY_ELIGIBLE_ENDPOINT")
+            access_token = get_snap_pay_access_token()
+            print(SNAP_PAY_BASE_URL)
+            print(SNAP_PAY_ELIGIBLE_ENDPOINT)
+            amount = request.query_params.get("amount", "")
+            print("access_token", access_token)
+            print("amount", amount)
+
+            if not amount or not access_token:
+                return Response(
+                    {
+                        "message": "Missing required parameters {amount} or {snap_access_token}"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            header = {
+                "Authorization": f"Bearer {access_token}",
+                "content-type": "application/json",
+            }
+
+            res = requests.get(
+                url=f"{SNAP_PAY_BASE_URL}{SNAP_PAY_ELIGIBLE_ENDPOINT}?amount={amount}",
+                headers=header,
+            ).json()
+
+            if res.get("successful", False):
+                return Response(res.get("response"), status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    res.get("errorData"), status=status.HTTP_400_BAD_REQUEST
+                )
+
+        except ConnectionError:
+            error_message = str(traceback.format_exc())
+            print(error_message)
+            return Response(
+                {"message": f"An Cennection error!! Try again please"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            error_message = str(traceback.format_exc())
+            print(error_message)
+            return Response(
+                {"message": f"An unexpected error!!"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                "access_token",
+                openapi.IN_QUERY,
+                description="The Torob Pay access token.",
+                type=openapi.TYPE_STRING,
+            ),
+            openapi.Parameter(
+                "tracking_number",
+                openapi.IN_QUERY,
+                description="Order tracking number.",
+                type=openapi.TYPE_STRING,
+            ),
+        ],
+        responses={200: "OK", 400: "Bad Request"},
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="snappay-payment-verification",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def snappay_payment_verify(self, request: Request):
+        order_receipt = None  # برای جلوگیری از ارور در except
+        try:
+            SNAPPAY_BASE_URL = os.getenv("SNAP_PAY_BASE_URL")
+            SNAPPAY_PAYMENT_VERIFY = os.getenv("SNAP_PAY_VERIFY_ENDPOINT")
+            SNAPPAY_PAYMENT_SETTLE = os.getenv("SNAP_PAY_SETTLE_ENDPOINT")
+
+            access_token = get_snap_pay_access_token()
+            tracking_number = request.query_params.get("transactionId", "")
+            state = request.query_params.get("state", "")
+
+            if not tracking_number or not access_token or not state:
+                return Response(
+                    {
+                        "message": "Missing required parameters: transactionId or snap_access_token or state"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            order = Order.objects.filter(tracking_number=tracking_number).first()
+            if not order:
+                return Response(
+                    {
+                        "message": f"No order found with tracking number {tracking_number}."
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if state == "FAILED":
+                order_receipt.snap_error_message = "FAILED query parameter from Snap"
+                order_receipt.save()
+                order.payment_status = "F"
+                order.save()
+                self._failed_sms(order)
+                return Response(
+                    {
+                        "message": "Payment state was FAILED",
+                    },
+                    status=status.HTTP_424_FAILED_DEPENDENCY,
+                )
+
+            if not order.snap_payment_token:
+                return Response(
+                    {"message": "No order payment token found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            order_receipt: OrderReceipt = order.receipt
+            if not order_receipt:
+                return Response(
+                    {"message": "No order receipt found for this order."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            header = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": f"Base {access_token}",
+            }
+
+            # Step 1: Verify payment
+            verify_response = requests.post(
+                url=f"{SNAPPAY_BASE_URL}/{SNAPPAY_PAYMENT_VERIFY}",
+                headers=header,
+                data=json.dumps({"paymentToken": order.snap_payment_token}),
+            )
+            verify_data = verify_response.json()
+
+            if verify_data.get("successful"):
+                print("Payment verification successful")
+                transaction_id = verify_data.get("response", {}).get(
+                    "transactionId", ""
+                )
+                order.payment_status = "SV"
+                order.save()
+
+                order_receipt.azkivam_error_message = verify_data
+                order_receipt.torob_transaction_id = transaction_id
+                order_receipt.save()
+
+                # Step 2: Settle payment
+                settle_response = requests.post(
+                    url=f"{SNAPPAY_BASE_URL}/{SNAPPAY_PAYMENT_SETTLE}",
+                    headers=header,
+                    data=json.dumps({"paymentToken": order.snap_payment_token}),
+                )
+                settle_data = settle_response.json()
+
+                if settle_data.get("successful"):
+                    order_receipt.snap_error_message = settle_data
+                    order_receipt.snap_transaction_id = settle_data.get(
+                        "response", {}
+                    ).get("transactionId", "")
+                    order.save()
+                    order.payment_status = "C"
+                    order.save()
+                    self._success_sms(order)
+                    return Response(
+                        {
+                            "message": "Successfully verified and settled payment.",
+                            "response": settle_data.get("response", {}),
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+                else:
+                    error_message = settle_data.get("errorData", {}).get(
+                        "message", "Unknown error"
+                    )
+                    error_code = settle_data.get("errorData", {}).get(
+                        "errorCode", "Unknown code"
+                    )
+                    order_receipt.azkivam_error_message += error_message
+                    order_receipt.torob_error_code = error_code
+                    order_receipt.save()
+                    order.payment_status = "SV"
+                    order.save()
+                    self._failed_sms(order)
+                    return Response(
+                        {
+                            "message": "Payment settlement failed.",
+                            "SnapPayError": settle_data.get("errorData", {}),
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            else:
+                error_message = verify_data.get("errorData", {}).get(
+                    "message", "Unknown error"
+                )
+                error_code = verify_data.get("errorData", {}).get(
+                    "errorCode", "Unknown code"
+                )
+                order_receipt.snap_error_message = error_message
+                order_receipt.snap_error_code = error_code
+                order_receipt.save()
+                order.payment_status = "F"
+                order.save()
+                self._failed_sms(order)
+                return Response(
+                    {
+                        "message": "Payment verification failed.",
+                        "SnapPayError": verify_data.get("errorData", {}),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        except requests.exceptions.RequestException as e:
+            error_message = f"Connection error: {str(e)}"
+            print(error_message)
+            if order_receipt:
+                order_receipt.azkivam_error_message = error_message
+                order_receipt.save()
+            return Response(
+                {"message": error_message}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception:
+            error_message = traceback.format_exc()
+            print(error_message)
+            if order_receipt:
+                order_receipt.azkivam_error_message = error_message
+                order_receipt.save()
+            return Response(
+                {"message": "An unexpected error occurred.", "trace": error_message},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(
+        detail=False,
+        methods=["get"],
         url_path="rejected_ask",
         permission_classes=[permissions.IsAuthenticated],
         serializer_class=OrderRejectedReasonSerializer,
@@ -971,16 +1222,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         url_path="azkivam-payment-verification",
         permission_classes=[permissions.IsAuthenticated],
     )
-    def azkivam_payment_verification(self, request:Request):
+    def azkivam_payment_verification(self, request: Request):
         try:
             tracking_number = request.query_params.get("tracking_number")
             if not tracking_number:
                 return Response(
-                    {
-                    "message": "Missing required parameters: tracking_number!!"
-                    },
+                    {"message": "Missing required parameters: tracking_number!!"},
                     status=status.HTTP_400_BAD_REQUEST,
-                    )
+                )
 
             order = Order.objects.filter(tracking_number=tracking_number).first()
             if not order:
@@ -997,7 +1246,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-
             order_receipt: OrderReceipt = order.receipt
             if not order_receipt:
                 return Response(
@@ -1008,14 +1256,21 @@ class OrderViewSet(viewsets.ModelViewSet):
             res = azkivam_verify(order)
 
             if res is None:
-                return Response({"message":"Some error occured please see order receipt", "trace":str(traceback.format_exc())},
-                                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response(
+                    {
+                        "message": "Some error occured please see order receipt",
+                        "trace": str(traceback.format_exc()),
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
             if res.status_code == 200:
                 self._success_sms(order)
             else:
                 self._failed_sms(order)
 
-            return Response({"message":"Response is taken from azki see data", "data":res.json()})
+            return Response(
+                {"message": "Response is taken from azki see data", "data": res.json()}
+            )
 
         except requests.exceptions.RequestException as e:
             error_message = f"Connection error: {str(e)}"
@@ -1044,16 +1299,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         url_path="azkivam-payment-failed",
         permission_classes=[permissions.IsAuthenticated],
     )
-    def azkivam_payment_failed(self, request:Response):
+    def azkivam_payment_failed(self, request: Response):
         try:
             tracking_number = request.query_params.get("tracking_number")
             if not tracking_number:
                 return Response(
-                    {
-                    "message": "Missing required parameters: tracking_number!!"
-                    },
+                    {"message": "Missing required parameters: tracking_number!!"},
                     status=status.HTTP_400_BAD_REQUEST,
-                    )
+                )
 
             order = Order.objects.filter(tracking_number=tracking_number).first()
             if not order:
@@ -1069,7 +1322,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                     {"message": "No order payment token found."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
-
 
             order_receipt: OrderReceipt = order.receipt
             if not order_receipt:
@@ -1096,9 +1348,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"message": "An unexpected error occurred.", "trace": error_message},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-
-
 
 
 class PostViewSet(ModelViewSet):

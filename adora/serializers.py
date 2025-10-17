@@ -26,6 +26,7 @@ from adora.models import (
 )
 from adora.tasks import (
     azkivam_send_create_ticket_request,
+    send_snap_payment_information,
     send_torobpay_payment_information,
     send_zarin_payment_information,
 )
@@ -444,7 +445,6 @@ class ProductListSerializer(serializers.ModelSerializer):
             "alt": obj.category.alt,
         }
 
-
     def get_material(self, obj):
         return {"id": obj.material.id, "name": obj.material.material_name}
 
@@ -525,9 +525,10 @@ class OrderSerializer(serializers.ModelSerializer):
             "returned_asked_reason",
             "torob_payment_page_url",
             "torob_payment_token",
+            "snap_payment_page_url",
+            "snap_payment_token",
             "azkivam_payment_token",
             "azkivam_payment_page_url",
-
         )
 
     def calculate_total_price_for_cahs_purchase(self, order: Order):
@@ -628,11 +629,15 @@ class OrderSerializer(serializers.ModelSerializer):
                     print("hello_azkivam")
                     azkivam_send_create_ticket_request(order)
 
+                if order.payment_reference == os.getenv("SNAPPAY_MERHCHANT_NAME"):
+                    self.calculate_total_price_for_Installment_purchase(order)
+                    print("hello_snappay")
+                    send_snap_payment_information(order)
+
                 # Use wallet_balance
                 if order.use_wallet_balance:
                     print(" order.use_wallet_balance", order.use_wallet_balance)
                     self.use_user_walet_balance_in_order(order)
-
 
             return order
 
