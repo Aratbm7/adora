@@ -747,7 +747,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                 </div>
             </div>
             """,
-            obj.id,  # 0
+            obj.id,  # 0 پی
             tooltips["status"],  # 1
             style.strip(),  # 2
             hover.strip(),  # 3
@@ -1469,7 +1469,9 @@ class OrderReceiptAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         if obj and obj.torob_reciept:
             return "Torob Pay"
         if obj and obj.azkivam_reciept:
-            return "AzkiVam"
+            return "Azki Vam"
+        if obj and obj.snap_reciept:
+            return "Snap Pay"
         return "-"
 
     @admin.display(description=_("سفارش"))
@@ -1484,7 +1486,7 @@ class OrderReceiptAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         """Dynamically generates fieldsets."""
         return (
             (
-                "رسید اسنپ ترپ پی",
+                "رسید اسنپ  پی",
                 {  # This section appears first
                     "fields": (
                         "snap_transaction_id",

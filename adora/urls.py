@@ -11,6 +11,7 @@ from adora.views import (
     OrderViewSet,
     PostViewSet,
     ProductViewset,
+    SnapPayCallbackView,
 )
 
 router = DefaultRouter()
@@ -35,5 +36,15 @@ router.register(
 
 
 urlpatterns = [
+    path(
+        "snappay-callback/",
+        SnapPayCallbackView.as_view(),
+        name="snappay-callback",
+    ),
+    path(
+        "snappay-callback",
+        SnapPayCallbackView.as_view(),
+        name="snappay-callback",
+    ),
     path("", include(router.urls)),
 ]

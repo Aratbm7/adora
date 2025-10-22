@@ -271,8 +271,8 @@ def _choose_getaway_header(
 
     if getway_name == "snappay":
         return {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Authorization": f"Base {access_token}",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}",
         }
 
 
@@ -367,7 +367,7 @@ def snappay_status(order: Order):
     url = f"{os.getenv('SNAP_PAY_BASE_URL')}{os.getenv('SNAP_PAY_STATUS_ENDPOINT')}"
     response = get_request(
         url,
-        get_torobpay_access_token,
+        get_snap_pay_access_token,
         "snappay",
         params={"paymentToken": order.snap_payment_token},
     )
@@ -412,7 +412,7 @@ def _handle_snap_action(order: Order, endpoint_env: str, success_status: str):
     url = f"{os.getenv('SNAP_PAY_BASE_URL')}{os.getenv(endpoint_env)}"
     response = post_request(
         url,
-        {"paymentToken": order.torob_payment_token},
+        {"paymentToken": order.snap_payment_token},
         get_snap_pay_access_token,
         "snappay",
     )
@@ -538,6 +538,7 @@ def azkivam_send_create_ticket_request(order: Order):
             order=order, azkivam_reciept=True
         )
         suburl = os.getenv("AZKIVAM_CREATE_TICKET", "")
+
         body_data = {
             "amount": consider_walet_balance(order),
             "redirect_uri": "https://adorayadak.ir/a_redirect_uri",
@@ -557,7 +558,15 @@ def azkivam_send_create_ticket_request(order: Order):
                 )
             ),
         }
-
+        if getattr(order, "delivery_cost"):
+            body_data.items.append(
+                {
+                    "name": "هزینه ارسال و بسته بندی",
+                    "count": 1,
+                    "amount": int(order.delivery_cost) * 10,
+                    "url": f"https://adorayadak.ir/checkout",
+                }
+            )
         res = requests.post(
             url=f"{AZKIVAM_BASE_URL}/{suburl}",
             headers=azkivam_header(suburl, "POST", AZKIVAM_MERCHANT_ID),
@@ -788,7 +797,7 @@ def send_snap_payment_information(order: Order):
         )
         # print(Order)
         snap_base_url = os.getenv("SNAP_PAY_BASE_URL")
-        snap_payment_endpoint = os.getenv("SNAP_PAY_VERIFY_ENDPOINT")
+        snap_payment_endpoint = os.getenv("SNAP_PAY_PAYMENT_ENDPOINT")
 
         access_token = get_snap_pay_access_token()
         # if type(access_token) != str:
@@ -798,8 +807,8 @@ def send_snap_payment_information(order: Order):
 
         print("access_token", access_token)
         header = {
-            "content-type": "application/x-www-form-urlencoded",
-            "Authorization": f"Base {access_token}",
+            "content-type": "application/json",
+            "Authorization": f"Bearer {access_token}",
         }
 
         payment_data = {
@@ -810,22 +819,22 @@ def send_snap_payment_information(order: Order):
                 else 0
             ),
             "externalSourceAmount": 0,
-            "mobile": str(order.user.phone_number).replace("+98", "0"),
+            "mobile": str(order.user.phone_number),
             "paymentMethodTypeDto": "INSTALLMENT",
-            "returnURL": os.getenv("SNAP_PAY_RETURN_TO_THIS_URL"),
+            "returnURL": "https://api.adorayadak.ir/snappay-callback/",
             "transactionId": order.tracking_number,
             "cartList": [
                 {
-                    "cartId": order.tracking_number,
+                    "cartId": order.id,
                     "totalAmount": consider_walet_balance(order),
-                    "isShipmentInclude": True if order.delivery_cost else False,
+                    "isShipmentIncluded": True if order.delivery_cost else False,
                     "shippingAmount": int(order.delivery_cost) * 10,
                     "isTaxIncluded": False,
                     "taxAmount": 0,
                     "cartItems": list(
                         map(
                             lambda item: {
-                                "id": str(item.id),
+                                "id": item.id,
                                 "amount": item.sold_price * 10,
                                 "category": "ابزار و یدک خودرو",
                                 "count": item.quantity,
@@ -841,8 +850,10 @@ def send_snap_payment_information(order: Order):
 
         print(payment_data)
 
+        url = f"{snap_base_url}{snap_payment_endpoint}"
+        print("urllllllllllllllllllL", url)
         res = requests.post(
-            url=f"{snap_base_url}{snap_payment_endpoint}",
+            url=url,
             headers=header,
             data=json.dumps(payment_data),
         )

@@ -440,17 +440,16 @@ class Order(Date):
     torob_payment_page_url = models.CharField(
         null=True, blank=True, max_length=200, verbose_name=("صفحه پرداخت ترب پی")
     )
-    snap_payment_token = models.CharField(
+    snap_payment_token = models.TextField(
         null=True,
         blank=True,
-        max_length=200,
         verbose_name=_("توکن پرداخت اسنپ پی"),
         help_text=_(
             "توکن پرداخت اسنپ پی فقط موقعی ساخته میشود که پرداخت با ترب پی انجام شود وگرنه خالی باید باشد."
         ),
     )
-    snap_payment_page_url = models.CharField(
-        null=True, blank=True, max_length=200, verbose_name=("صفحه پرداخت اسنپ پی")
+    snap_payment_page_url = models.TextField(
+        null=True, blank=True, verbose_name=("صفحه پرداخت اسنپ پی")
     )
     azkivam_payment_token = models.CharField(
         null=True,
