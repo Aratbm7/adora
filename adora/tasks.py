@@ -534,9 +534,8 @@ AZKIVAM_BASE_URL = os.getenv("AZKIVAM_BASE_URL", "")
 
 def azkivam_send_create_ticket_request(order: Order):
     try:
-        order_receipt: OrderReceipt = OrderReceipt.objects.create(
-            order=order, azkivam_reciept=True
-        )
+        order_receipt = OrderReceipt.objects.create(order=order, azkivam_reciept=True)
+
         suburl = os.getenv("AZKIVAM_CREATE_TICKET", "")
 
         body_data = {
@@ -546,57 +545,73 @@ def azkivam_send_create_ticket_request(order: Order):
             "provider_id": AZKIVAM_PROVIDED_ID,
             "mobile_number": str(order.user.phone_number).replace("+98", "0"),
             "merchant_id": AZKIVAM_MERCHANT_ID,
-            "items": list(
-                map(
-                    lambda item: {
-                        "name": item.product.fa_name,
-                        "count": item.quantity,
-                        "amount": item.sold_price * 10,
-                        "url": f"https://adorayadak.ir/adp-{item.id}/{item.product.fa_name.strip().replace(' ', '-')}",
-                    },
-                    order.order_items.all(),
-                )
-            ),
+            "items": [
+                {
+                    "name": item.product.fa_name,
+                    "count": item.quantity,
+                    "amount": item.sold_price * 10,
+                    "url": f"https://adorayadak.ir/adp-{item.id}/{item.product.fa_name.strip().replace(' ', '-')}",
+                }
+                for item in order.order_items.all()
+            ],
         }
-        if getattr(order, "delivery_cost"):
-            body_data.items.append(
+
+        # افزودن هزینه ارسال (در صورت وجود)
+        delivery_cost = getattr(order, "delivery_cost", None)
+        if delivery_cost:
+            body_data["items"].append(
                 {
                     "name": "هزینه ارسال و بسته بندی",
                     "count": 1,
-                    "amount": int(order.delivery_cost) * 10,
-                    "url": f"https://adorayadak.ir/checkout",
+                    "amount": int(delivery_cost) * 10,
+                    "url": "https://adorayadak.ir/checkout",
                 }
             )
+
+        # ارسال درخواست به آذکی‌وام
         res = requests.post(
             url=f"{AZKIVAM_BASE_URL}/{suburl}",
             headers=azkivam_header(suburl, "POST", AZKIVAM_MERCHANT_ID),
             data=json.dumps(body_data),
+            timeout=30,  # ✅ اضافه‌شده برای جلوگیری از هنگ در صورت قطع اتصال
         )
-        res_dict = {}
+
+        print(f"Azkivam response status: {res.status_code}")
+
+        # پردازش پاسخ
         if res.status_code == 200:
             res_dict = res.json()
-            print(f"Azkivam Ticket is created")
+            print("Azkivam Ticket created successfully")
+
             response = res_dict.get("result", {})
-            print("respone : ", response)
+            print("Response:", response)
+
             order.azkivam_payment_token = response.get("ticket_id")
             order.azkivam_payment_page_url = response.get("payment_uri")
             order.save()
 
         else:
+            # در صورت خطا از سمت آذکی‌وام
+            try:
+                res_dict = res.json()
+            except Exception:
+                res_dict = {"error": res.text}
+
             error_message = str(res_dict)
-            print(error_message)
-            order_receipt.torob_error_message = error_message
+            print("Azkivam error:", error_message)
+
+            order_receipt.azkivam_error_message = error_message
             order_receipt.save()
 
-        print(res_dict)
     except ConnectionError as e:
-        print(e)
+        print("ConnectionError:", e)
         order_receipt.azkivam_error_message = str(e)
         order_receipt.save()
 
     except Exception as e:
-        print(traceback.format_exc())
-        order_receipt.azkivam_error_message = str(traceback.format_exc())
+        tb = traceback.format_exc()
+        print(tb)
+        order_receipt.azkivam_error_message = tb
         order_receipt.save()
 
 
