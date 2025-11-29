@@ -231,6 +231,25 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         )
 
 
+class SnapUpdateItemSerializer(serializers.Serializer):
+    count = serializers.IntegerField(min_value=1)
+
+    id = serializers.IntegerField()
+    def validate_id(self, value):
+        if not Product.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Product not found")
+        return value
+
+
+class SnapOrderUpdateSerilizer(serializers.Serializer):
+    tracking_number = serializers.CharField()
+    items = SnapUpdateItemSerializer(many=True)
+
+    def validate_items(self, value):
+        if not value or len(value) == 0:
+            raise serializers.ValidationError("At least one item is required")
+        return value
+
 class ProductOrderItemSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
     discounted_price = serializers.SerializerMethodField(read_only=True)
@@ -576,7 +595,7 @@ class OrderSerializer(serializers.ModelSerializer):
         order.order_reward = total_reward
         order.save()
 
-    def _get_wallet_balance(sel, order) -> Decimal:
+    def _get_wallet_balance(self, order) -> Decimal:
         return order.user.profile.wallet_balance
 
     def use_user_walet_balance_in_order(self, order):

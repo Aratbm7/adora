@@ -254,6 +254,9 @@ class Product(Date):
 
     faqs = models.ManyToManyField(FAQ, blank=True, verbose_name="سوالات متداول اختصاصی")
 
+    def get_discounted_price(self)->int:
+        return int(self.price * (1 - (self.price_discount_percent / 100)))
+
     def get_all_faqs(self):
         """
         دریافت تمام سوالات (هم سوالات اختصاصی این محصول و هم سوالات عمومی)
@@ -294,6 +297,7 @@ class Order(Date):
     SNAP_VERIFIED = "SV"
     SNAP_CANCELED = "SC"
     SNAP_REVERT = "SR"
+    SNAP_UPDATE = "SU"
     AZKIVAM_VERIFY = "AV"
     AZKIVAM_CANCEL = "AC"
     AZKIVAM_REVERSE = "AR"
@@ -303,13 +307,14 @@ class Order(Date):
         (PAYMENT_STATUS_FAILED, "نا موفق"),
         (TOROB_CANCELED, _("کنسل شده‌ (ترب)")),
         (TOROB_REVERT, _("لغو شده‌ (ترب)")),
-        (TOROB_VERIFIED, _("وریفای شده در انتظار settlement")),
+        (TOROB_VERIFIED, _("وریفای شده در انتظار torob settlement")),
         (AZKIVAM_VERIFY, _("از کی وام وریفای")),
         (AZKIVAM_CANCEL, _("از کی وام کنسل")),
         (AZKIVAM_REVERSE, _("ازکی وام رورس")),
         (SNAP_CANCELED, _("کنسل شده‌ (اسنپ)")),
         (SNAP_REVERT, _("لغو شده‌ (اسنپ)")),
-        (SNAP_VERIFIED, _("وریفای شده در انتظار settlement")),
+        (SNAP_VERIFIED, _("وریفای شده در انتظار snap settlement")),
+        (SNAP_UPDATE, _("آپدیت شده (اسنپ)")),
     ]
 
     payment_status = models.CharField(

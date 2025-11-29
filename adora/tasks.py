@@ -408,60 +408,6 @@ def _handle_torobpay_action(order: Order, endpoint_env: str, success_status: str
     return response
 
 
-def _handle_snap_action(order: Order, endpoint_env: str, success_status: str):
-    url = f"{os.getenv('SNAP_PAY_BASE_URL')}{os.getenv(endpoint_env)}"
-    response = post_request(
-        url,
-        {"paymentToken": order.snap_payment_token},
-        get_snap_pay_access_token,
-        "snappay",
-    )
-
-    order_receipt: OrderReceipt = order.receipt
-    if not order_receipt:
-        return None
-
-    if response.get("successful"):
-        print(f"{endpoint_env} successful")
-        transaction_id = response.get("response", {}).get("transactionId", "")
-        order_receipt.snap_error_message = response
-        order_receipt.snap_transaction_id = transaction_id
-        order_receipt.save()
-
-        order.payment_status = success_status
-        order.save()
-    else:
-        error_msg = str(response.get("errorData", {}))
-        if not order_receipt.snap_error_message:
-            order_receipt.snap_error_message = error_msg
-        else:
-            order_receipt.snap_error_message += error_msg
-        order_receipt.save()
-
-    return response
-
-
-@shared_task
-def snappay_verify(order: Order):
-    return _handle_snap_action(
-        order, "SNAP_PAY_VERIFY_ENDPOINT", "SV"
-    )  # Snap Verificaion
-
-
-def snappay_settle(order: Order):
-    return _handle_snap_action(order, "SNAP_PAY_SETTLE_ENDPOINT", "C")  # Complete
-
-
-@shared_task
-def snappay_revert(order: Order):
-    return _handle_snap_action(order, "SNAP_PAY_REVERT_ENDPOINT", "SR")  # Snap Reverted
-
-
-@shared_task
-def snappay_cancel(order: Order):
-    return _handle_snap_action(order, "SNAP_PAY_CANCEL_ENDPOINT", "SC")  # Snap Canceled
-
-
 @shared_task
 def torobpay_verify(order: Order):
     return _handle_torobpay_action(
@@ -828,12 +774,8 @@ def send_snap_payment_information(order: Order):
 
         payment_data = {
             "amount": consider_walet_balance(order),
-            "discountAmount": (
-                int(order.user.profile.wallet_balance) * 10
-                if order.use_wallet_balance
-                else 0
-            ),
-            "externalSourceAmount": 0,
+            "discountAmount": 0,
+            "externalSourceAmount": int(order.user.profile.wallet_balance * 10) if order.use_wallet_balance else 0,
             "mobile": str(order.user.phone_number),
             "paymentMethodTypeDto": "INSTALLMENT",
             "returnURL": "https://api.adorayadak.ir/snappay-callback/",
@@ -841,10 +783,10 @@ def send_snap_payment_information(order: Order):
             "cartList": [
                 {
                     "cartId": order.id,
-                    "totalAmount": consider_walet_balance(order),
+                    "totalAmount": int(order.total_price) * 10,
                     "isShipmentIncluded": True if order.delivery_cost else False,
                     "shippingAmount": int(order.delivery_cost) * 10,
-                    "isTaxIncluded": False,
+                    "isTaxIncluded": True,
                     "taxAmount": 0,
                     "cartItems": list(
                         map(
@@ -854,7 +796,7 @@ def send_snap_payment_information(order: Order):
                                 "category": "ابزار و یدک خودرو",
                                 "count": item.quantity,
                                 "name": item.product.fa_name,
-                                "commissionType": 10801,
+                                "commissionType": 100,
                             },
                             order.order_items.all(),
                         )
@@ -901,3 +843,57 @@ def send_snap_payment_information(order: Order):
     except Exception as e:
         print(f"There is some error on get access token function from Torob Pay")
         print(traceback.format_exc())
+
+def _handle_snap_action(order: Order, endpoint_env: str, success_status: str, data={}):
+    url = f"{os.getenv('SNAP_PAY_BASE_URL')}{os.getenv(endpoint_env)}"
+    response = post_request(
+        url,
+        {"paymentToken": order.snap_payment_token},
+        get_snap_pay_access_token,
+        "snappay",
+    )
+
+    order_receipt: OrderReceipt = order.receipt
+    if not order_receipt:
+        return None
+
+    if response.get("successful"):
+        print(f"{endpoint_env} successful")
+        transaction_id = response.get("response", {}).get("transactionId", "")
+        order_receipt.snap_error_message = response
+        order_receipt.snap_transaction_id = transaction_id
+        order_receipt.save()
+
+        order.payment_status = success_status
+        order.save()
+    else:
+        error_msg = str(response.get("errorData", {}))
+        if not order_receipt.snap_error_message:
+            order_receipt.snap_error_message = error_msg
+        else:
+            order_receipt.snap_error_message += error_msg
+        order_receipt.save()
+
+    return response
+
+
+@shared_task
+def snappay_verify(order: Order):
+    return _handle_snap_action(
+        order, "SNAP_PAY_VERIFY_ENDPOINT", "SV"
+    )  # Snap Verificaion
+
+
+def snappay_settle(order: Order):
+    return _handle_snap_action(order, "SNAP_PAY_SETTLE_ENDPOINT", "C")  # Complete
+
+
+@shared_task
+def snappay_revert(order: Order):
+    return _handle_snap_action(order, "SNAP_PAY_REVERT_ENDPOINT", "SR")  # Snap Reverted
+
+
+@shared_task
+def snappay_cancel(order: Order):
+    return _handle_snap_action(order, "SNAP_PAY_CANCEL_ENDPOINT", "SC")  # Snap Canceled
+

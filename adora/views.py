@@ -3,7 +3,6 @@ import os
 import time
 import traceback
 
-import django_filters
 import requests
 from django.db.models import Prefetch
 from django_filters import rest_framework as filters
@@ -36,6 +35,7 @@ from adora.models import (
     Collaborate_Contact,
     Comment,
     Order,
+    OrderItem,
     OrderReceipt,
     Post,
     Product,
@@ -57,6 +57,7 @@ from adora.serializers import (
     ProductRetrieveSerializer,
     ProductSearchSerializer,
     ProductTorobSerilizers,
+    SnapOrderUpdateSerilizer,
 )
 from adora.tasks import (
     get_torobpay_access_token,
@@ -915,6 +916,196 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(
         detail=False,
+        methods=["post"],
+        url_path="snap-update",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def snap_update(self, request: Request):
+        try:
+            serializer = SnapOrderUpdateSerilizer(data=request.data)
+
+            print("It come from snappay-update",request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+            tracking_number = data.get("tracking_number")
+            items = data.get("items")
+            print("From snap-update",data)
+
+            # پیدا کردن سفارش
+            try:
+                order = Order.objects.get(tracking_number=tracking_number)
+            except Order.DoesNotExist:
+                return Response(
+                    {"error": "Order not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # چک کردن وجود payment token
+            if not order.snap_payment_token:
+                return Response(
+                    {"error": "Order does not have a snap payment token"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # محاسبه مبلغ جدید و ساخت لیست آیتم‌های نهایی
+            total_amount = 0
+            final_items = []
+
+            for item in items:
+                try:
+                    product = Product.objects.get(id=item["id"])
+                except Product.DoesNotExist:
+                    return Response(
+                        {"error": f"Product with id {item['id']} not found"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+
+                count = item["count"]
+                product_price = product.get_discounted_price()
+                total_amount += product_price * count
+                final_items.append((product, count, product_price))
+
+            # چک کردن که مبلغ جدید از مبلغ قبلی بیشتر نباشد
+            old_total = order.total_price
+            if total_amount > old_total:
+                return Response({
+                    "error": "SnappPay does not allow price increase",
+                    "old_amount": float(old_total),
+                    "new_amount": float(total_amount)
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # ساخت لیست آیتم‌ها برای payload
+            cart_items_list = list(map(
+                lambda item: {
+                    "id": item[0].id,
+                    "amount": int(item[2] * 10),  # تبدیل به ریال
+                    "category": "ابزار و یدک خودرو",
+                    "count": item[1],
+                    "name": item[0].fa_name,
+                    "commissionType": 10801
+                },
+                final_items
+            ))
+
+
+            total_amount += order.delivery_cost
+            print(order.user.profile.wallet_balance, "profile wallet balance from snap update")
+            print(order.amount_used_wallet_balance, "used wallet balance from snap update")
+            print(total_amount, "total amount from snap update")
+            # محاسبه مبلغ با در نظر گرفتن کیف پول برای مبلغ جدید
+            if order.use_wallet_balance:
+                wallet_balance = order.amount_used_wallet_balance
+                if wallet_balance >= total_amount:
+                    print(wallet_balance, "total amount from snap update")
+                    print(total_amount, "total amount from snap update")
+                    # کل مبلغ از کیف پول پرداخت می‌شود
+                    print("Wallet_balance is greater than total_amout")
+                    amount_to_pay = 0
+                    wallet_discount = int(total_amount * 10)
+                else:
+
+                    # بخشی از کیف پول استفاده می‌شود
+                    amount_to_pay = int((total_amount - wallet_balance) * 10)
+                    wallet_discount = int(wallet_balance * 10)
+            else:
+                # کیف پول استفاده نمی‌شود
+                amount_to_pay = int(total_amount * 10)
+                wallet_discount = 0
+
+            # ساخت payload برای درخواست update
+
+            print(amount_to_pay, "from snap_update")
+            payload_data = {
+                "amount": amount_to_pay,  # مبلغی که باید پرداخت شود
+                "cartList": [
+                    {
+                        "cartId": order.id,
+                        "cartItems": cart_items_list,
+                        "isShipmentIncluded": True if order.delivery_cost else False,
+                        "isTaxIncluded": True,
+                        "shippingAmount": int(order.delivery_cost * 10) if order.delivery_cost else 0,
+                        "taxAmount": 0,
+                        "totalAmount": int(total_amount * 10)
+                    }
+                ],
+                "discountAmount": 0,
+                "externalSourceAmount": wallet_discount,
+                "paymentMethodTypeDto": "INSTALLMENT",
+                "paymentToken": order.snap_payment_token
+            }
+
+            print("from snap update: ",payload_data)
+            # ارسال درخواست به اسنپ پی
+            SNAP_PAY_BASE_URL = os.getenv("SNAP_PAY_BASE_URL")
+            SNAP_PAY_UPDATE_ENDPOINT = os.getenv("SNAP_PAY_UPDATE_ENDPOINT")
+
+            access_token = get_snap_pay_access_token()
+
+            header = {
+                "content-type": "application/json",
+                "Authorization": f"Bearer {access_token}",
+            }
+
+            url = f"{SNAP_PAY_BASE_URL}{SNAP_PAY_UPDATE_ENDPOINT}"
+
+            response = requests.post(
+                url=url,
+                headers=header,
+                data=json.dumps(payload_data),
+            )
+
+            response_dict = response.json()
+
+            if response_dict.get("successful", False):
+                # اگر موفقیت‌آمیز بود، آیتم‌های قبلی را حذف و آیتم‌های جدید را اضافه کن
+                order.order_items.all().delete()
+
+                for product, count, price in final_items:
+                    OrderItem.objects.create(
+                        order=order,
+                        product=product,
+                        quantity=count,
+                        sold_price=price
+                    )
+
+                # به‌روزرسانی مبلغ کل سفارش
+                order.total_price = int(amount_to_pay / 10)
+                order.payment_status = "SU"
+                order.save()
+
+                return Response({
+                    "message": "Order updated successfully",
+                    "transactionId": response_dict.get("response", {}).get("transactionId"),
+                    "old_total": float(old_total),
+                    "new_total": float(amount_to_pay / 10)
+                }, status=status.HTTP_200_OK)
+            else:
+                error_data = response_dict.get("errorData", {})
+                error_message = f"{error_data.get('errorCode', '')} - {error_data.get('message', '')}"
+                print(error_message)
+
+                return Response({
+                    "error": "Failed to update order in SnappPay",
+                    "details": error_message,
+                    "response": response_dict
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        except ConnectionError as e:
+            print("Connection Error")
+            return Response({
+                "error": "Connection error to SnappPay",
+                "details": str(e)
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        except Exception as e:
+            print(f"Error in snap_update: {traceback.format_exc()}")
+            return Response({
+                "error": "Internal server error",
+                "details": str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(
+        detail=False,
         methods=["get"],
         url_path="snap-check-merchant-eligible",
         permission_classes=[permissions.IsAuthenticated],
@@ -970,233 +1161,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"message": f"An unexpected error!!"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-    # @action(
-    #     detail=False,
-    #     methods=["get", "post"],
-    #     url_path="snappay-callback",
-    #     permission_classes=[permissions.AllowAny],
-    # )
-    # def snappay_callback(self, request: Request):
-    #     """
-    #     Handles SnapPay callback (POST or GET).
-    #     - Receives transactionId and state
-    #     - Calls verify and settle APIs
-    #     - Redirects user to frontend page accordingly
-    #     """
-    #     order_receipt = None  # برای جلوگیری از ارور در except
-    #     failed_stage = None
-    #     try:
-    #         SNAPPAY_BASE_URL = os.getenv("SNAP_PAY_BASE_URL")
-    #         SNAPPAY_PAYMENT_VERIFY = os.getenv("SNAP_PAY_VERIFY_ENDPOINT")
-    #         SNAPPAY_PAYMENT_SETTLE = os.getenv("SNAP_PAY_SETTLE_ENDPOINT")
-    #         FRONT_END_RETURN_URL = os.getenv("SNAP_PAY_RETURN_TO_THIS_URL")
-    #
-    #         print("CONTENT_TYPE", request.content_type)
-    #         if request.method == "POST":
-    #             data = request.data
-    #             access_token = get_snap_pay_access_token()
-    #
-    #             tracking_number = data.get("transactionId", "")
-    #             state = data.get("state", "")
-    #
-    #             if not tracking_number or not access_token or not state:
-    #                 failed_stage = "out_error"
-    #                 return HttpResponseRedirect(
-    #                     f"{FRONT_END_RETURN_URL}?state=FAILED&failed_stage={failed_stage}"
-    #                 )
-    #                 # return Response(
-    #                 #     {
-    #                 #         "message": "Missing required parameters: transactionId or snap_access_token or state"
-    #                 #     },
-    #                 #     status=status.HTTP_400_BAD_REQUEST,
-    #                 # )
-    #
-    #             order = Order.objects.filter(tracking_number=tracking_number).first()
-    #             if not order:
-    #                 failed_stage = "internal_error"
-    #                 return HttpResponseRedirect(
-    #                     f"{FRONT_END_RETURN_URL}?state=FAILED&failed_stage={failed_stage}"
-    #                 )
-    #                 # return Response(
-    #                 #     {
-    #                 #         "message": f"No order found with tracking number {tracking_number}."
-    #                 #     },
-    #                 #     status=status.HTTP_404_NOT_FOUND,
-    #                 # )
-    #
-    #             order_receipt: Optional[OrderReceipt] = getattr(order, "receipt", None)
-    #             if not order_receipt:
-    #                 failed_stage = "internal_error"
-    #                 return HttpResponseRedirect(
-    #                     f"{FRONT_END_RETURN_URL}?state=FAILED&failed_stage={failed_stage}"
-    #                 )
-    #                 # return Response(
-    #                 #     {"message": "No order receipt found for this order."},
-    #                 #     status=status.HTTP_404_NOT_FOUND,
-    #                 # )
-    #
-    #             if state == "FAILED":
-    #                 order_receipt.snap_error_message = (
-    #                     "FAILED query parameter from Snap"
-    #                 )
-    #                 order_receipt.save()
-    #                 order.payment_status = "F"
-    #                 order.save()
-    #                 self._failed_sms(order)
-    #                 failed_stage = "out_error"
-    #                 return HttpResponseRedirect(
-    #                     f"{FRONT_END_RETURN_URL}?state=FAILED&failed_stage={failed_stage}"
-    #                 )
-    #                 # return Response(
-    #                 #     {
-    #                 #         "message": "Payment state was FAILED",
-    #                 #     },
-    #                 #     status=status.HTTP_424_FAILED_DEPENDENCY,
-    #                 # )
-    #
-    #             if not order.snap_payment_token:
-    #                 failed_stage = "out_error"
-    #                 return HttpResponseRedirect(
-    #                     f"{FRONT_END_RETURN_URL}?state=FAILED&failed_stage={failed_stage}"
-    #                 )
-    #                 # return Response(
-    #                 #     {"message": "No order payment token found."},
-    #                 #     status=status.HTTP_404_NOT_FOUND,
-    #                 # )
-    #
-    #             header = {
-    #                 "Content-Type": "application/json",
-    #                 "Authorization": f"Bearer {access_token}",
-    #             }
-    #
-    #             # Step 1: Verify payment
-    #             verify_response = requests.post(
-    #                 url=f"{SNAPPAY_BASE_URL}/{SNAPPAY_PAYMENT_VERIFY}",
-    #                 headers=header,
-    #                 data=json.dumps({"paymentToken": order.snap_payment_token}),
-    #             )
-    #             verify_data = verify_response.json()
-    #
-    #             if verify_data.get("successful"):
-    #                 print("Payment verification successful")
-    #                 transaction_id = verify_data.get("response", {}).get(
-    #                     "transactionId", ""
-    #                 )
-    #                 order.payment_status = "SV"
-    #                 order.save()
-    #
-    #                 order_receipt.azkivam_error_message = verify_data
-    #                 order_receipt.torob_transaction_id = transaction_id
-    #                 order_receipt.save()
-    #
-    #                 # Step 2: Settle payment
-    #                 settle_response = requests.post(
-    #                     url=f"{SNAPPAY_BASE_URL}/{SNAPPAY_PAYMENT_SETTLE}",
-    #                     headers=header,
-    #                     data=json.dumps({"paymentToken": order.snap_payment_token}),
-    #                 )
-    #                 settle_data = settle_response.json()
-    #
-    #                 if settle_data.get("successful"):
-    #                     order_receipt.snap_error_message = settle_data
-    #                     order_receipt.snap_transaction_id = settle_data.get(
-    #                         "response", {}
-    #                     ).get("transactionId", "")
-    #                     order.save()
-    #                     order.payment_status = "C"
-    #                     order.save()
-    #                     self._success_sms(order)
-    #                     return HttpResponseRedirect(f"{FRONT_END_RETURN_URL}?state=OK")
-    #                     # return Response(
-    #                     #     {
-    #                     #         "message": "Successfully verified and settled payment.",
-    #                     #         "response": settle_data.get("response", {}),
-    #                     #     },
-    #                     #     status=status.HTTP_200_OK,
-    #                     # )
-    #                 else:
-    #                     error_message = settle_data.get("errorData", {}).get(
-    #                         "message", "Unknown error"
-    #                     )
-    #                     error_code = settle_data.get("errorData", {}).get(
-    #                         "errorCode", "Unknown code"
-    #                     )
-    #                     order_receipt.snap_error_message = (
-    #                         order_receipt.snap_error_message or ""
-    #                     ) + error_message
-    #                     order_receipt.snap_error_code = error_code
-    #                     order_receipt.save()
-    #                     order.payment_status = "SV"
-    #                     order.save()
-    #                     self._failed_sms(order)
-    #                     failed_stage = "settle_error"
-    #                     return HttpResponseRedirect(
-    #                         f"{FRONT_END_RETURN_URL}?state=FAILED&failed_stage={failed_stage}"
-    #                     )
-    #                     # return Response(
-    #                     #     {
-    #                     #         "message": "Payment settlement failed.",
-    #                     #         "SnapPayError": settle_data.get("errorData", {}),
-    #                     #     },
-    #                     #     status=status.HTTP_400_BAD_REQUEST,
-    #                     # )
-    #
-    #             else:
-    #                 error_message = verify_data.get("errorData", {}).get(
-    #                     "message", "Unknown error"
-    #                 )
-    #                 error_code = verify_data.get("errorData", {}).get(
-    #                     "errorCode", "Unknown code"
-    #                 )
-    #                 order_receipt.snap_error_message = error_message
-    #                 order_receipt.snap_error_code = error_code
-    #                 order_receipt.save()
-    #                 order.payment_status = "F"
-    #                 order.save()
-    #                 self._failed_sms(order)
-    #                 failed_stage = "verify_error"
-    #                 return HttpResponseRedirect(
-    #                     f"{FRONT_END_RETURN_URL}?state=FAILED&failed_stage={failed_stage}"
-    #                 )
-    #                 # return Response(
-    #                 #     {
-    #                 #         "message": "Payment verification failed.",
-    #                 #         "SnapPayError": verify_data.get("errorData", {}),
-    #                 #     },
-    #                 #     status=status.HTTP_400_BAD_REQUEST,
-    #                 # )
-    #         if request.method == "GET":
-    #             return HttpResponseRedirect(f"{FRONT_END_RETURN_URL}?state=OK")
-    #
-    #     except requests.exceptions.RequestException as e:
-    #         error_message = f"Connection error: {str(e)}"
-    #         print(error_message)
-    #         if order_receipt:
-    #             order_receipt.azkivam_error_message = error_message
-    #             order_receipt.save()
-    #             failed_stage = "connection_error"
-    #             return HttpResponseRedirect(
-    #                 f"{FRONT_END_RETURN_URL}?state=FAILED&failed_stage={failed_stage}"
-    #             )
-    #         # return Response(
-    #         #     {"message": error_message}, status=status.HTTP_400_BAD_REQUEST
-    #         # )
-    #
-    #     except Exception:
-    #         error_message = traceback.format_exc()
-    #         print(error_message)
-    #         if order_receipt:
-    #             order_receipt.azkivam_error_message = error_message
-    #             order_receipt.save()
-    #         failed_stage = "internal_error"
-    #         return HttpResponseRedirect(
-    #             f"{FRONT_END_RETURN_URL}?state=FAILED&failed_stage={failed_stage}"
-    #         )
-    #         # return Response(
-    #         #     {"message": "An unexpected error occurred.", "trace": error_message},
-    #         #     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-    #         # )
 
     @action(
         detail=False,
