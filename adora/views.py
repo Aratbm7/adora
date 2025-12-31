@@ -914,8 +914,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    @action(
-        detail=False,
+    @action( detail=False,
         methods=["post"],
         url_path="snap-update",
         permission_classes=[permissions.IsAuthenticated],
@@ -1029,7 +1028,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     }
                 ],
                 "discountAmount": 0,
-                "externalSourceAmount": wallet_discount,
+                "discountAmount": 0,
                 "paymentMethodTypeDto": "INSTALLMENT",
                 "paymentToken": order.snap_payment_token
             }

@@ -1,4 +1,6 @@
+import json
 import os
+import traceback
 
 from admin_auto_filters.filters import AutocompleteFilter
 from django import forms
@@ -11,6 +13,7 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
 from jalali_date.admin import ModelAdminJalaliMixin
+import requests
 
 from adora.models import *
 from adora.tasks import (
@@ -18,6 +21,7 @@ from adora.tasks import (
     azkivam_reverse,
     azkivam_status,
     azkivam_verify,
+    get_snap_pay_access_token,
     send_order_status_message,
     snappay_cancel,
     snappay_revert,
@@ -450,13 +454,6 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                         {9}
                         <span>{15}</span>
                     </button>
-                    <button type="button" class="snap-check" data-id="{0}" data-action="revert"
-                        title="{10}" style="{2}"
-                        onmouseover="{3}"
-                        onmouseout="{4}">
-                        {11}
-                        <span>{16}</span>
-                    </button>
                     <button type="button" class="snap-check" data-id="{0}" data-action="cancel"
                         title="{12}" style="{2}"
                         onmouseover="{3}"
@@ -464,6 +461,12 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                         {17}
                         <span>{18}</span>
                     </button>
+                    <button type="button"                                  onmouseout="{4}"
+                    onmouseover="{3}"
+                    onclick="openSnapUpdateModal({0})"
+                    style="border-radius:5px; border:0; color:white; background-color: #ff9800 !important;">
+            آپدیت
+            </button>
                 </div>
             </div>
             """,
@@ -502,7 +505,43 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
             width: 100% !important;
             min-height: 45px !important;
             display: flex !important;
-            flex-direction: column !important;
+           // snap_order_item.js - نسخه تصحیح شده
+async function openSnapUpdateModal(orderId) {
+    Swal.fire({
+        title: 'در حال دریافت اطلاعات...',
+        didOpen: () => { Swal.showLoading(); }
+    });
+
+    try {
+        const response = await fetch(`/admin/adora/order/${orderId}/get-items/`); // ✅
+        const data = await response.json();
+
+        if (!data.success) throw new Error(data.error);
+
+        // ... بقیه کد
+    } catch (e) {
+        Swal.fire('خطا', e.message, 'error');
+    }
+}
+
+async function submitSnapUpdate(orderId, items) {
+    Swal.fire({ title: 'در حال ارسال...', didOpen: () => { Swal.showLoading(); }});
+
+    try {
+        const response = await fetch(`/admin/adora/order/${orderId}/update-snap-items/`, { // ✅
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ items: items })
+        });
+
+        // ... بقیه کد
+    } catch (e) {
+        Swal.fire('خطا', 'ارتباط با سرور قطع شد', 'error');
+    }
+} flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
             gap: 2px !important;
@@ -1058,11 +1097,11 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     def handle_snap_action(self, request, order_id: int, action: str):
         try:
             order = Order.objects.get(pk=order_id)
+            print("from admin", order, order_id, action)
 
             task_functions = {
                 "verify": snappay_verify,
                 "settle": snappay_settle,
-                "revert": snappay_revert,
                 "cancel": snappay_cancel,
                 "status": snappay_status,
             }
@@ -1120,6 +1159,15 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         except Exception as e:
             return JsonResponse({"error": f"خطا: {str(e)}"})
 
+
+    class Media:
+        js = (
+            "admin/js/torob_js/torob_fetch.js",
+            "admin/js/snap_js/snap_fetch.js",
+                "admin/js/azkivam_js/azkivam_fetch.js",
+            'https://cdn.jsdelivr.net/npm/sweetalert2@11',
+                        'admin/js/snap_js/snap_order_update_v2.js',
+        )
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
@@ -1138,16 +1186,135 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                 self.admin_site.admin_view(self.handle_azkivam_action),
                 name="azkivam-action",
             ),
+            path('<int:order_id>/get-items/', self.admin_site.admin_view(self.get_order_items), name='get-order-items'),
+            path('<int:order_id>/update-snap-items/', self.admin_site.admin_view(self.update_snap_items), name='update-snap-items'),
         ]
         return custom_urls + urls
 
-    class Media:
-        js = (
-            "admin/js/torob_js/torob_fetch.js",
-            "admin/js/snap_js/snap_fetch.js",
-            "admin/js/azkivam_js/azkivam_fetch.js",
-        )
+    def get_order_items(self, request, order_id):
+        try:
+            order = Order.objects.get(pk=order_id)
+            items = order.order_items.all()
+            data = [
+                {'id': item.product.id, 'name': item.product.fa_name, 'count': item.quantity}
+                for item in items
+            ]
+            return JsonResponse({'success': True, 'items': data, 'tracking_number': order.tracking_number})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
 
+    def update_snap_items(self, request, order_id):
+        if request.method != 'POST':
+            return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+        try:
+            # دریافت داده‌ها از JS
+            data = json.loads(request.body)
+            items_input = data.get("items") # [{'id': '...', 'count': '...'}]
+
+            # پیدا کردن سفارش
+            try:
+                order = Order.objects.get(pk=order_id)
+            except Order.DoesNotExist:
+                return JsonResponse({"error": "Order not found"}, status=404)
+
+            if not order.snap_payment_token:
+                return JsonResponse({"error": "Order does not have a snap payment token"}, status=400)
+
+            # محاسبه مبلغ جدید (دقیقاً طبق منطق شما)
+            total_amount = 0
+            final_items = []
+
+            for item in items_input:
+                try:
+                    product = Product.objects.get(id=item["id"])
+                    count = int(item["count"])
+                    if count < 0: continue # جلوگیری از عدد منفی
+                except (Product.DoesNotExist, ValueError):
+                    return JsonResponse({"error": f"Product {item['id']} invalid"}, status=404)
+
+                product_price = product.get_discounted_price()
+                total_amount += product_price * count
+                final_items.append((product, count, product_price))
+
+            # چک کردن سقف مبلغ
+            old_total = order.total_price
+            if total_amount > old_total:
+                return JsonResponse({
+                    "error": "اسنپ‌پی اجازه افزایش مبلغ را نمی‌دهد",
+                    "old_amount": float(old_total),
+                    "new_amount": float(total_amount)
+                }, status=400)
+
+            # ساخت لیست برای Payload
+            cart_items_list = [{
+                "id": p.id,
+                "amount": int(pr * 10),
+                "category": "ابزار و یدک خودرو",
+                "count": c,
+                "name": p.fa_name,
+                "commissionType": 10801
+            } for p, c, pr in final_items]
+
+            total_amount += order.delivery_cost
+
+            # محاسبه کیف پول (دقیقاً طبق منطق شما)
+            wallet_discount = 0
+            if order.use_wallet_balance:
+                wallet_balance = order.amount_used_wallet_balance
+                if wallet_balance >= total_amount:
+                    amount_to_pay = 0
+                    wallet_discount = int(total_amount * 10)
+                else:
+                    amount_to_pay = int((total_amount - wallet_balance) * 10)
+                    wallet_discount = int(wallet_balance * 10)
+            else:
+                amount_to_pay = int(total_amount * 10)
+                wallet_discount = 0
+
+            # ارسال به اسنپ‌پی
+            payload_data = {
+                "amount": amount_to_pay,
+                "cartList": [{
+                    "cartId": order.id,
+                    "cartItems": cart_items_list,
+                    "isShipmentIncluded": True if order.delivery_cost else False,
+                    "isTaxIncluded": True,
+                    "shippingAmount": int(order.delivery_cost * 10) if order.delivery_cost else 0,
+                    "taxAmount": 0,
+                    "totalAmount": int(total_amount * 10)
+                }],
+                "discountAmount": 0,
+                "externalSourceAmount": wallet_discount,
+                "paymentMethodTypeDto": "INSTALLMENT",
+                "paymentToken": order.snap_payment_token
+            }
+
+            access_token = get_snap_pay_access_token()
+            url = f"{os.getenv('SNAP_PAY_BASE_URL')}{os.getenv('SNAP_PAY_UPDATE_ENDPOINT')}"
+            headers = {"content-type": "application/json", "Authorization": f"Bearer {access_token}"}
+
+            response = requests.post(url, headers=headers, data=json.dumps(payload_data))
+            response_dict = response.json()
+
+            if response_dict.get("successful", False):
+                # بروزرسانی دیتابیس
+                order.order_items.all().delete()
+                for product, count, price in final_items:
+                    OrderItem.objects.create(order=order, product=product, quantity=count, sold_price=price)
+
+                order.total_price = int(amount_to_pay / 10) if amount_to_pay > 0 else total_amount
+                order.payment_status = "SU"
+                order.save()
+
+                return JsonResponse({"success": True, "message": "سفارش با موفقیت بروزرسانی شد"})
+            else:
+                error_msg = response_dict.get("errorData", {}).get("message", "خطا در اسنپ‌پی")
+                return JsonResponse({"error": error_msg}, status=400)
+
+        except Exception as e:
+            print(traceback.format_exc())
+            return JsonResponse({"error": str(e)}, status=500)
     def save_model(self, request, obj: Order, form, change):
         # Check if this is an update and not a new object creation
         if change:
@@ -1165,7 +1332,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
             if previous_obj.delivery_status != obj.delivery_status:
                 # Call `send_message` if the new status is 'shipped' or 'pending'
                 if obj.delivery_status == "P":
-                    text_code = os.environ.get("ORDER_PENDING")
+                    text_code = os.environ.get("ORDER_PENDING", 0)
                     send_order_status_message.delay(
                         phone_number,
                         [
@@ -1176,7 +1343,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                     )
                     # print(text_code)
                 if obj.delivery_status == "S":
-                    text_code = os.environ.get("ORDER_SHIPPED")
+                    text_code = os.environ.get("ORDER_SHIPPED", 0)
                     send_order_status_message.delay(
                         phone_number,
                         [
@@ -1189,7 +1356,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                     )
 
                 if obj.delivery_status == "D":
-                    text_code = os.environ.get("ORDER_DELIVERED")
+                    text_code = os.environ.get("ORDER_DELIVERED", 0)
                     send_order_status_message.delay(
                         phone_number,
                         [
@@ -1203,7 +1370,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
             if previous_obj.returned_status != obj.returned_status:
 
                 if obj.returned_status == "RC":
-                    text_code = os.environ.get("ORDER_RETURNED_CONFIRM")
+                    text_code = os.environ.get("ORDER_RETURNED_CONFIRM", 0)
                     send_order_status_message.delay(
                         phone_number,
                         [
@@ -1214,7 +1381,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                     )
 
                 if obj.returned_status == "RR":
-                    text_code = os.environ.get("ORDER_RETURNED_REJECT")
+                    text_code = os.environ.get("ORDER_RETURNED_REJECT", 0)
                     send_order_status_message.delay(
                         phone_number,
                         [
@@ -1469,9 +1636,7 @@ class OrderReceiptAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         if obj and obj.torob_reciept:
             return "Torob Pay"
         if obj and obj.azkivam_reciept:
-            return "Azki Vam"
-        if obj and obj.snap_reciept:
-            return "Snap Pay"
+            return "AzkiVam"
         return "-"
 
     @admin.display(description=_("سفارش"))
@@ -1486,7 +1651,7 @@ class OrderReceiptAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
         """Dynamically generates fieldsets."""
         return (
             (
-                "رسید اسنپ  پی",
+                "رسید اسنپ ترپ پی",
                 {  # This section appears first
                     "fields": (
                         "snap_transaction_id",

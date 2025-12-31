@@ -234,7 +234,6 @@ class ProductSearchSerializer(serializers.ModelSerializer):
 class SnapUpdateItemSerializer(serializers.Serializer):
     count = serializers.IntegerField(min_value=1)
 
-    id = serializers.IntegerField()
     def validate_id(self, value):
         if not Product.objects.filter(id=value).exists():
             raise serializers.ValidationError("Product not found")
@@ -249,6 +248,7 @@ class SnapOrderUpdateSerilizer(serializers.Serializer):
         if not value or len(value) == 0:
             raise serializers.ValidationError("At least one item is required")
         return value
+
 
 class ProductOrderItemSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
@@ -571,7 +571,7 @@ class OrderSerializer(serializers.ModelSerializer):
         else:
             print("Cash Discoutn Percent not found (message from order serizlier)")
 
-        order.total_price = total + order.delivery_cost
+        order.total_price = total + int(order.delivery_cost)
         order.save()
 
     def calculate_total_price_for_Installment_purchase(self, order: Order):
@@ -581,7 +581,7 @@ class OrderSerializer(serializers.ModelSerializer):
             order (Order)
         """
         total = sum([item.get_total() for item in order.order_items.all()])
-        order.total_price = total + order.delivery_cost
+        order.total_price = total + int(order.delivery_cost)
         order.save()
 
     def calculate_order_reward(self, order):

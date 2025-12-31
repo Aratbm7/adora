@@ -239,10 +239,10 @@ class AddressViewSet(ModelViewSet):
     # def perform_update(self, serializer):
     #     serializer.save(user=self.request.user)
 
-    [
-        personal_permissions({"u": 31, "o": 0, "a": 63}),
-        address_object_level_permissions({"u": 63, "o": 0, "a": 63}),
-    ]
+    # [
+    #     personal_permissions({"u": 31, "o": 0, "a": 63}),
+    #     address_object_level_permissions({"u": 63, "o": 0, "a": 63}),
+    # ]
     permission_classes = [permissions.IsAuthenticated]
     queryset = Address.objects.all()
     serializer_class = AddressSerilizer

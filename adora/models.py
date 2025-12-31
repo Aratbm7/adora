@@ -1,4 +1,5 @@
 from decimal import Decimal
+from functools import reduce
 import random
 import string
 from datetime import timedelta
@@ -450,7 +451,7 @@ class Order(Date):
         blank=True,
         verbose_name=_("توکن پرداخت اسنپ پی"),
         help_text=_(
-            "توکن پرداخت اسنپ پی فقط موقعی ساخته میشود که پرداخت با ترب پی انجام شود وگرنه خالی باید باشد."
+            "توکن پرداخت اسنپ پی فقط موقعی ساخته میشود که پرداخت با اسنپ پی انجام شود وگرنه خالی باید باشد."
         ),
     )
     snap_payment_page_url = models.TextField(
@@ -521,6 +522,10 @@ class Order(Date):
             if not Order.objects.filter(tracking_number=tracking_number).exists():
                 return tracking_number
 
+    def get_order_discount(self) -> int:
+        # return reduce(lambda total,item:  total + item.get_total_price_without_discount(),self.order_items.all(), 0 )
+        return sum(item.get_item_discount() for item in self.order_items.all())
+
     def save(self, *args, **kwargs):
         if not self.tracking_number:
             self.tracking_number = self.generate_unique_tracking_number()
@@ -562,11 +567,16 @@ class OrderItem(models.Model):
         default=0, verbose_name=" قیمت فروخته شده"
     )
 
-    def _get_discounted_price(self):
-        return self.product.price * (1 - (self.product.price_discount_percent / 100))
+    def _get_discounted_price(self) -> int:
+        return int(self.product.price * (1 - (self.product.price_discount_percent / 100)))
+
+
 
     def get_total(self):
         return self._get_discounted_price() * self.quantity
+
+    def get_item_discount(self) -> int:
+        return self.product.price * self.quantity - int(self.get_total())
 
     def get_wallet_reward(self):
         return (

@@ -334,6 +334,7 @@ def post_request(
             print("Raw Response:", res.text)
             print("url : ", url)
 
+            print("dataa", data)
             try:
                 response_json = res.json()
                 print("Parsed JSON:", response_json)
@@ -774,7 +775,7 @@ def send_snap_payment_information(order: Order):
 
         payment_data = {
             "amount": consider_walet_balance(order),
-            "discountAmount": 0,
+           "discountAmount": 0,
             "externalSourceAmount": int(order.user.profile.wallet_balance * 10) if order.use_wallet_balance else 0,
             "mobile": str(order.user.phone_number),
             "paymentMethodTypeDto": "INSTALLMENT",
@@ -844,8 +845,9 @@ def send_snap_payment_information(order: Order):
         print(f"There is some error on get access token function from Torob Pay")
         print(traceback.format_exc())
 
-def _handle_snap_action(order: Order, endpoint_env: str, success_status: str, data={}):
+def _handle_snap_action(order: Order, endpoint_env: str, success_status: str):
     url = f"{os.getenv('SNAP_PAY_BASE_URL')}{os.getenv(endpoint_env)}"
+    print("payment_token", order.snap_payment_token)
     response = post_request(
         url,
         {"paymentToken": order.snap_payment_token},
