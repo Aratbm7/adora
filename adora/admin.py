@@ -2,10 +2,11 @@ import json
 import os
 import traceback
 
+
 from admin_auto_filters.filters import AutocompleteFilter
 from django import forms
 from django.conf import settings
-from django.contrib import admin, messages
+from django.contrib import admin
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.http import JsonResponse
 from django.urls import path, reverse
@@ -14,7 +15,6 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
 from jalali_date.admin import ModelAdminJalaliMixin
 import requests
-
 from adora.models import *
 from adora.tasks import (
     azkivam_cancel,
@@ -24,7 +24,6 @@ from adora.tasks import (
     get_snap_pay_access_token,
     send_order_status_message,
     snappay_cancel,
-    snappay_revert,
     snappay_settle,
     snappay_status,
     snappay_verify,
@@ -36,6 +35,8 @@ from adora.tasks import (
 )
 from core.utils.separate_and_convert_to_fa import separate_digits_and_convert_to_fa
 from core.utils.show_jalali_datetime import show_date_time
+from import_export.admin import ExportActionMixin
+from adora.resources import OrderResource
 
 admin.site.site_header = "پنل ادمین آدورا یدک"
 admin.site.site_title = "پنل ادمین آدورا یدک"
@@ -70,13 +71,30 @@ class UserFilter(AutocompleteFilter):
 class OrderItemInline(admin.StackedInline):
     model = OrderItem
 
+class SimpleMultiPaymentStatusFilter(admin.SimpleListFilter):
+    title = 'وضعیت پرداخت ترکیبی'
+    parameter_name = 'payment_status_multi'
 
-class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
+    def lookups(self, request, model_admin):
+        # ترکیبات مختلف از وضعیت‌ها
+        return [
+            ('C', 'فقط موفق'),
+            ('C,SU', 'موفق و آپدیت اسنپ'),
+        ]
+
+    def queryset(self, request, queryset):
+        if self.value():
+            statuses = self.value().split(',')
+            return queryset.filter(payment_status__in=statuses)
+        return queryset
+
+class OrderAdmin(ExportActionMixin, ModelAdminJalaliMixin, admin.ModelAdmin):
     search_fields = [
         "tracking_number",
         "user__profile__first_name",
         "user__profile__last_name",
     ]
+
     list_display = [
         "id",
         "tracking_number",
@@ -98,11 +116,15 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
     )
     list_filter = (
         UserFilter,
+        SimpleMultiPaymentStatusFilter,
         "payment_status",
         "delivery_status",
         "use_wallet_balance",
+        "created_date"
+
     )
 
+    resource_class = OrderResource
     inlines = (OrderItemInline,)
 
     def get_excluded_fields(self):
@@ -454,7 +476,7 @@ class OrderAdmin(ModelAdminJalaliMixin, admin.ModelAdmin):
                         {9}
                         <span>{15}</span>
                     </button>
-                    <button type="button" class="snap-check" data-id="{0}" data-action="cancel"
+                    <button type="button" class="torob-check" data-id="{0}" data-action="cancel"
                         title="{12}" style="{2}"
                         onmouseover="{3}"
                         onmouseout="{4}">

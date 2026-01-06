@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     # "account.apps.AccountConfig",
     "account",
     "adora",
+    "import_export",
 ]
 
 MIDDLEWARE = [
@@ -193,7 +194,7 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "static" # برای collectstatic
+STATIC_ROOT = BASE_DIR / "static"  # برای collectstatic
 
 STATICFILES_DIRS = [
     BASE_DIR / "staticfiles",  # اطمینان از لود شدن فایل‌های custom
@@ -261,3 +262,6 @@ ALLOWED_SMS_CAMPAIGN_PARAM_PATHS = [
     ("campaign.end_datetime", "تاریخ پایان کمپین"),
     ("campaign.name", "نام کمپین"),
 ]
+
+# django-import-export configs
+IMPORT_EXPORT_USE_TRANSACTIONS = True
