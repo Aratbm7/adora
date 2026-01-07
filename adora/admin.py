@@ -476,7 +476,7 @@ class OrderAdmin(ExportActionMixin, ModelAdminJalaliMixin, admin.ModelAdmin):
                         {9}
                         <span>{15}</span>
                     </button>
-                    <button type="button" class="torob-check" data-id="{0}" data-action="cancel"
+                    <button type="button" class="snap-check" data-id="{0}" data-action="cancel"
                         title="{12}" style="{2}"
                         onmouseover="{3}"
                         onmouseout="{4}">
